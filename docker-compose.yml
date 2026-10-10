@@ -1,0 +1,43 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: finovaunt-api:v1
+    environment:
+      FINOVAUNT_API_HOST: 0.0.0.0
+      FINOVAUNT_API_PORT: "8787"
+      FINOPS_OUTPUT_DIR: artifacts-live-validation
+    ports:
+      - "127.0.0.1:8787:8787"
+    volumes:
+      - ./artifacts-live-validation:/app/artifacts-live-validation:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: finovaunt-frontend:v1
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:4173:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid
+      - /var/cache/nginx:size=16m,noexec,nosuid
+      - /var/run:size=4m,noexec,nosuid
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
