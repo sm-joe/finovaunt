@@ -1,0 +1,27 @@
+{
+  "run_id": "2861a246b6b7",
+  "proposals": [
+    {
+      "resource_id": "aws:ec2:eu-central-1:i-02dd62b24cadeccce",
+      "provider": "aws",
+      "action": "no_change",
+      "rationale": "Peak CPU is 46.7%. Automated rightsizing is withheld by the conservative policy.",
+      "estimated_monthly_savings_usd": 0.0,
+      "savings_basis": "not_applicable",
+      "risk": "critical",
+      "requires_human_approval": true,
+      "proposed_instance_type": null,
+      "optimization_confidence": "low",
+      "missing_evidence": [
+        "average memory utilization telemetry",
+        "at least 7 days of utilization history",
+        "workload stability/seasonality evidence",
+        "verified monthly resource-level USD cost"
+      ]
+    }
+  ],
+  "risk_summary": [
+    "aws:ec2:eu-central-1:i-02dd62b24cadeccce: production requires review",
+    "aws:ec2:eu-central-1:i-02dd62b24cadeccce: critical risk"
+  ]
+}

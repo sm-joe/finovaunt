@@ -1,0 +1,12 @@
+{
+  "run_id": "ef84d90d4e99",
+  "algorithm": "sha256",
+  "files": {
+    "audit.json": "074bd78c69f30b892c69eabc2ec9a8cda7dee15645c131b00b81e63cc1f7f91f",
+    "billing.json": "0a7bebc0109cdd9a2763da1ecb8e987fe68d9b8c6e42a5993379e40a5ad2b2f2",
+    "cost_evidence.json": "a68eadb16f67806a5e24ba54696c2d0f5bc69aa75352d8c70a3595cbf3eb3c78",
+    "cost_history.json": "c1e23cf68a2a90d7f9b76cf6ba6ba6129f68ac0ac699d6c9cf976f23b7a2337c",
+    "main.tf": "6b637d7f5f553264cdfba94617baa7de095ad51fdda6d95e2280bcc18503b2a8",
+    "proposal.json": "cefd4a183c25921333461179ed03219a801d6b81a89269eefe03de60af7b6376"
+  }
+}

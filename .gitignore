@@ -1,7 +1,82 @@
+# Python virtual environments
 .venv/
+venv/
+env/
+
+# Environment variables and secrets
 .env
+.env.*
+!.env.example
+!.env.template
+
+# Python bytecode and caches
 __pycache__/
+*.py[cod]
+*$py.class
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+.pytype/
+.coverage
+.coverage.*
+htmlcov/
+
+# Python packaging and build output
+build/
+dist/
+*.egg-info/
+.eggs/
+wheels/
+
+# Frontend dependencies
+node_modules/
+frontend/node_modules/
+
+# Vite / frontend build output
+dist/
+frontend/dist/
+
+# TypeScript build metadata
+*.tsbuildinfo
+
+# Test and coverage artifacts
+coverage/
+.nyc_output/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+
+# Local backup files
+*.bak
+*.backup
+*~
+
+# Generated Finovaunt scan and smoke-test artifacts
+artifacts-dashboard-smoke/
+artifacts-live-eu-central-smoke/
+artifacts-live-validation/
+artifacts-*/
+
+# Terraform
 .terraform/
 *.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# IDE and editor files
+.vscode/
+.idea/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini

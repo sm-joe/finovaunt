@@ -308,7 +308,7 @@ def optimize(state: AgentState) -> AgentState:
 
         if telemetry_hours < 168:
             evidence_gaps.append(
-                "at least 7 days of usable utilization datapoints")
+                "at least 7 days of utilization history")
 
         if "telemetry_datapoints_usable" in metric.metadata:
             try:

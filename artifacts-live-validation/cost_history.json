@@ -1,0 +1,138 @@
+{
+  "schema_version": "1.1",
+  "generated_at": "2026-10-10T14:46:57.544301Z",
+  "run_count": 1,
+  "latest_run_id": "41bdbe233c65",
+  "history_retention": "append_only_snapshots_except_same_run_retry_replacement",
+  "runs": [
+    {
+      "run_id": "41bdbe233c65",
+      "generated_at": "2026-10-10T14:46:57.543140Z",
+      "resource_count": 1,
+      "resources": [
+        {
+          "resource_id": "aws:ec2:eu-central-1:i-02dd62b24cadeccce",
+          "provider": "aws",
+          "resource_type": "compute",
+          "name": "euc1-vpn",
+          "region": "eu-central-1",
+          "environment": "prod",
+          "utilization": {
+            "avg_cpu_percent": 0.15,
+            "peak_cpu_percent": 46.69,
+            "avg_memory_percent": null
+          },
+          "telemetry": {
+            "status": "available",
+            "source": "cloudwatch:AWS/EC2:CPUUtilization",
+            "metric": "CPUUtilization",
+            "period_seconds": 3600.0,
+            "lookback_days": 14.0,
+            "datapoints_returned": 336.0,
+            "datapoints_usable": 336.0,
+            "datapoints_expected": 336.0,
+            "coverage_percent": 100.0,
+            "first_datapoint_at": "2026-09-26T14:46:00Z",
+            "latest_datapoint_at": "2026-10-10T13:46:00Z",
+            "window_start": "2026-09-26T14:46:52.364562Z",
+            "window_end": "2026-10-10T14:46:52.364562Z",
+            "warnings": [
+              "Memory utilization was not collected."
+            ]
+          },
+          "data_quality_warnings": [
+            "Observed-period cost is not converted to monthly cost or used as a monthly savings baseline.",
+            "Memory utilization was not collected."
+          ],
+          "cost": {
+            "status": "observed_period_cost_only",
+            "evidence_kind": "observed_resource_cost",
+            "amount": 1.2271e-06,
+            "currency": "USD",
+            "monthly_cost_usd": null,
+            "period_start": "2026-09-26",
+            "period_end_exclusive": "2026-10-10",
+            "period_basis": "observed_period_not_monthly"
+          },
+          "recommendation": {
+            "action": "no_change",
+            "risk": "critical",
+            "requires_human_approval": true,
+            "proposed_instance_type": null
+          },
+          "savings": {
+            "estimated_monthly_savings_usd": 0.0,
+            "basis": "not_applicable",
+            "classification": "not_applicable",
+            "realized_savings_status": "not_verified",
+            "realized_savings_usd": null
+          },
+          "changes_since_previous": {
+            "baseline": "no_previous_snapshot",
+            "utilization_delta_percentage_points": {
+              "avg_cpu_percent": null,
+              "peak_cpu_percent": null,
+              "avg_memory_percent": null
+            },
+            "monthly_resource_cost_delta_usd": null,
+            "cost_comparison_status": "no_previous_snapshot",
+            "recommendation_changed": null,
+            "proposed_monthly_savings_delta_usd": null,
+            "realized_savings": {
+              "status": "not_verified",
+              "amount_usd": null
+            }
+          }
+        }
+      ],
+      "account_billing_context": {
+        "status": "available",
+        "period_start": "2026-09-01",
+        "period_end_exclusive": "2026-10-01",
+        "metric": "UnblendedCost",
+        "currency": "USD",
+        "total_cost": 15.2449304707,
+        "group_by": [
+          "SERVICE",
+          "REGION"
+        ],
+        "resource_attribution": "not_available",
+        "usage_note": "Account-level billing is context only and is not attributed to individual resources or used to calculate savings.",
+        "ec2_resource_cost_collection": {
+          "status": "available",
+          "period_start": "2026-09-26",
+          "period_end_exclusive": "2026-10-10",
+          "granularity": "DAILY",
+          "reason": null,
+          "resource_attribution": "resource_id"
+        }
+      },
+      "scan_provenance": {
+        "discovery_modes": [
+          "aws-live"
+        ],
+        "providers": [
+          "aws"
+        ],
+        "regions": [
+          "eu-central-1"
+        ],
+        "resources_in_evidence": 1,
+        "collection_warnings": [
+          "CPU telemetry coverage: 1/1 inspected resources usable (100.00%); 0 excluded; period=3600s; lookback=14 days."
+        ],
+        "telemetry_status_counts": {
+          "available": 1
+        },
+        "coverage_scope": "Resources represented in this artifact only; resources excluded during discovery are described by collection warnings."
+      },
+      "realized_savings_verified": false
+    }
+  ],
+  "controls": {
+    "account_cost_is_not_resource_cost": true,
+    "observed_period_cost_is_not_monthly_cost": true,
+    "proposed_savings_are_not_realized_savings": true,
+    "realized_savings_status": "not_verified_without_post_change_validation"
+  }
+}

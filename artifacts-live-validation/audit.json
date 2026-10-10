@@ -1,0 +1,10 @@
+{
+  "events": [
+    "Collected 1 aws metrics",
+    "CPU telemetry coverage: 1/1 inspected resources usable (100.00%); 0 excluded; period=3600s; lookback=14 days.",
+    "Billing summary status: available",
+    "Generated 1 proposals",
+    "Risk assessment complete: 2 flags",
+    "Cost evidence report generated for 1 resources"
+  ]
+}

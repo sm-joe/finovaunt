@@ -1,0 +1,91 @@
+{
+  "schema_version": "1.0",
+  "run_id": "2861a246b6b7",
+  "generated_at": "2026-10-10T13:43:41.417818Z",
+  "summary": {
+    "resource_count": 1,
+    "cost_evidence_status_counts": {
+      "observed_period_cost_only": 1
+    },
+    "savings_classification_counts": {
+      "not_applicable": 1
+    },
+    "realized_savings_verified": false
+  },
+  "account_billing_context": {
+    "status": "available",
+    "period_start": "2026-09-01",
+    "period_end_exclusive": "2026-10-01",
+    "metric": "UnblendedCost",
+    "currency": "USD",
+    "total_cost": 15.2449304707,
+    "group_by": [
+      "SERVICE",
+      "REGION"
+    ],
+    "resource_attribution": "not_available",
+    "usage_note": "Account-level billing is context only and is not attributed to individual resources or used to calculate savings.",
+    "ec2_resource_cost_collection": {
+      "status": "available",
+      "period_start": "2026-09-26",
+      "period_end_exclusive": "2026-10-10",
+      "granularity": "DAILY",
+      "reason": null,
+      "resource_attribution": "resource_id"
+    }
+  },
+  "resources": [
+    {
+      "resource_id": "aws:ec2:eu-central-1:i-02dd62b24cadeccce",
+      "provider": "aws",
+      "resource_type": "compute",
+      "name": "euc1-vpn",
+      "region": "eu-central-1",
+      "environment": "prod",
+      "production_critical": true,
+      "utilization": {
+        "avg_cpu_percent": 0.15,
+        "peak_cpu_percent": 46.69,
+        "avg_memory_percent": null
+      },
+      "cost_evidence": {
+        "status": "observed_period_cost_only",
+        "evidence_kind": "observed_resource_cost",
+        "source": "aws_cost_explorer_resource_id",
+        "amount": 1.2271e-06,
+        "currency": "USD",
+        "period": {
+          "start": "2026-09-26",
+          "end_exclusive": "2026-10-10",
+          "basis": "observed_period_not_monthly"
+        },
+        "monthly_cost_usd": null,
+        "warnings": [
+          "Observed-period cost is not converted to monthly cost or used as a monthly savings baseline."
+        ]
+      },
+      "recommendation": {
+        "action": "no_change",
+        "rationale": "Peak CPU is 46.7%. Automated rightsizing is withheld by the conservative policy.",
+        "risk": "critical",
+        "requires_human_approval": true,
+        "proposed_instance_type": null
+      },
+      "savings_evidence": {
+        "action": "no_change",
+        "estimated_monthly_savings_usd": 0.0,
+        "basis": "not_applicable",
+        "classification": "not_applicable",
+        "assumptions": [],
+        "realized_savings": {
+          "status": "not_verified",
+          "amount_usd": null,
+          "reason": "No post-change billing comparison is recorded by this workflow."
+        }
+      },
+      "data_quality_warnings": [
+        "Observed-period cost is not converted to monthly cost or used as a monthly savings baseline."
+      ]
+    }
+  ]
+}

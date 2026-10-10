@@ -1,0 +1,79 @@
+name: Finovaunt Docker Build Pipeline
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: finovaunt-docker-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: Required CI Gate
+    uses: ./.github/workflows/ci.yml
+
+  security:
+    name: Required Security Gate
+    uses: ./.github/workflows/security.yml
+
+  build-api:
+    name: Build API Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs:
+      - ci
+      - security
+
+    if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+
+    steps:
+      - name: Check Out Repository
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build API Image (do not publish)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          load: true
+          tags: finovaunt-api:${{ github.sha }}
+
+      - name: Confirm API Image Exists
+        run: docker image inspect "finovaunt-api:${GITHUB_SHA}" > /dev/null
+
+  build-frontend:
+    name: Build Dashboard Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs:
+      - ci
+      - security
+
+    if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+
+    steps:
+      - name: Check Out Repository
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build Dashboard Image (do not publish)
+        uses: docker/build-push-action@v7
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: false
+          load: true
+          tags: finovaunt-dashboard:${{ github.sha }}
+
+      - name: Confirm Dashboard Image Exists
+        run: docker image inspect "finovaunt-dashboard:${GITHUB_SHA}" > /dev/null

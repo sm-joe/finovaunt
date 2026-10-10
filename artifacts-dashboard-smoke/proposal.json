@@ -1,0 +1,81 @@
+{
+  "run_id": "ef84d90d4e99",
+  "proposals": [
+    {
+      "resource_id": "aws:ec2:eu-central-1:worker-01",
+      "provider": "aws",
+      "action": "rightsize",
+      "rationale": "Non-production mock compute averages 3.8% CPU and peaks at 11.5%. The 30% figure is a simulated estimate, not a live recommendation or forecast.",
+      "estimated_monthly_savings_usd": 85.92,
+      "savings_basis": "simulated_estimate",
+      "risk": "medium",
+      "requires_human_approval": true,
+      "proposed_instance_type": "smaller-compatible-size; verify provider catalog",
+      "optimization_confidence": "low",
+      "missing_evidence": [
+        "at least 7 days of utilization history",
+        "workload stability/seasonality evidence",
+        "verified monthly resource-level USD cost"
+      ]
+    },
+    {
+      "resource_id": "aws:rds:eu-central-1:payments-primary",
+      "provider": "aws",
+      "action": "no_change",
+      "rationale": "Peak CPU is 94.0%. Automated rightsizing is withheld by the conservative policy.",
+      "estimated_monthly_savings_usd": 0.0,
+      "savings_basis": "not_applicable",
+      "risk": "critical",
+      "requires_human_approval": true,
+      "proposed_instance_type": null,
+      "optimization_confidence": "low",
+      "missing_evidence": [
+        "memory utilization below the conservative 70% threshold",
+        "at least 7 days of utilization history",
+        "workload stability/seasonality evidence",
+        "verified monthly resource-level USD cost"
+      ]
+    },
+    {
+      "resource_id": "gcp:compute:us-central1:batch-02",
+      "provider": "gcp",
+      "action": "rightsize",
+      "rationale": "Non-production mock compute averages 8.2% CPU and peaks at 24.0%. The 30% figure is a simulated estimate, not a live recommendation or forecast.",
+      "estimated_monthly_savings_usd": 58.42,
+      "savings_basis": "simulated_estimate",
+      "risk": "medium",
+      "requires_human_approval": true,
+      "proposed_instance_type": "smaller-compatible-size; verify provider catalog",
+      "optimization_confidence": "low",
+      "missing_evidence": [
+        "at least 7 days of utilization history",
+        "workload stability/seasonality evidence",
+        "verified monthly resource-level USD cost"
+      ]
+    },
+    {
+      "resource_id": "gcp:database:us-central1:analytics-prod",
+      "provider": "gcp",
+      "action": "no_change",
+      "rationale": "Peak CPU is 89.0%. Automated rightsizing is withheld by the conservative policy.",
+      "estimated_monthly_savings_usd": 0.0,
+      "savings_basis": "not_applicable",
+      "risk": "critical",
+      "requires_human_approval": true,
+      "proposed_instance_type": null,
+      "optimization_confidence": "low",
+      "missing_evidence": [
+        "memory utilization below the conservative 70% threshold",
+        "at least 7 days of utilization history",
+        "workload stability/seasonality evidence",
+        "verified monthly resource-level USD cost"
+      ]
+    }
+  ],
+  "risk_summary": [
+    "aws:rds:eu-central-1:payments-primary: production requires review",
+    "aws:rds:eu-central-1:payments-primary: critical risk",
+    "gcp:database:us-central1:analytics-prod: production requires review",
+    "gcp:database:us-central1:analytics-prod: critical risk"
+  ]
+}
