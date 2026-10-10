@@ -2,6 +2,7 @@ name: Finovaunt Docker Build Pipeline
 
 on:
   push:
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -18,6 +19,7 @@ jobs:
 
   security:
     name: Required Security Gate
+    needs: ci
     uses: ./.github/workflows/security.yml
 
   build-api:

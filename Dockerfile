@@ -18,7 +18,10 @@ RUN mkdir -p /app/artifacts-live \
     && useradd --system --uid 10001 --gid finovaunt --home-dir /nonexistent finovaunt \
     && chown -R finovaunt:finovaunt /app
 
+RUN rm -rf /usr/local/lib/python3.13/site-packages/pip
+
 USER 10001:10001
+
 EXPOSE 8787
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
