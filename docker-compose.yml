@@ -1,9 +1,6 @@
 services:
   api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: finovaunt-api:v1
+    image: ghcr.io/sm-joe/finovaunt-api:latest
     environment:
       FINOVAUNT_API_HOST: 0.0.0.0
       FINOVAUNT_API_PORT: "8787"
@@ -22,10 +19,7 @@ services:
     restart: unless-stopped
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    image: finovaunt-frontend:v1
+    image: ghcr.io/sm-joe/finovaunt-dashboard:latest
     depends_on:
       api:
         condition: service_healthy
