@@ -54,6 +54,15 @@ jobs:
       - name: Install Project Dependencies
         run: uv sync --dev
 
+      - name: Install Terraform for HCL validation
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.8"
+          terraform_wrapper: false
+
+      - name: Verify Terraform installation
+        run: terraform version
+
       - name: Restore Prior History from Latest Successful Scan Artifact
         shell: bash
         run: |

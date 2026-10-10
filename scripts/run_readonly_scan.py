@@ -68,6 +68,11 @@ def main() -> int:
     state.update(assess_risk(state))
     if state.get("validation_error") or state.get("status") == "validation_failed":
         print("ERROR: risk/HCL assessment failed; no proposal artifacts written.", file=sys.stderr)
+        # assess_risk already sanitizes validation_error; expose it so CI logs
+        # identify missing executables or the exact formatter/linter failure.
+        validation_error = state.get("validation_error")
+        if validation_error:
+            print(f"- Validation detail: {validation_error}", file=sys.stderr)
         for event in state.get("events", []):
             print(f"- {event}", file=sys.stderr)
         return 1
