@@ -255,12 +255,16 @@ def collect_data(state: AgentState) -> AgentState:
     }
 
 
+
 def optimize(state: AgentState) -> AgentState:
-    """Generate proposals with explicit cost provenance and conservative savings."""
+    """Generate proposals with explicit evidence gaps and separate risk/confidence."""
     proposals: list[dict[str, Any]] = []
 
     for raw_metric in state.get("metrics", []):
         metric = ResourceMetric.model_validate(raw_metric)
+        discovery = metric.metadata.get("discovery", "")
+        cost_status = metric.metadata.get("cost_status", "not_collected")
+        cost_currency = metric.metadata.get("cost_currency", "").upper()
         eligible = (
             metric.resource_type == "compute"
             and metric.environment in {"dev", "test"}
@@ -268,9 +272,42 @@ def optimize(state: AgentState) -> AgentState:
             and metric.peak_cpu_percent < 35
             and not metric.production_critical
         )
-        discovery = metric.metadata.get("discovery", "")
-        cost_status = metric.metadata.get("cost_status", "not_collected")
-        cost_currency = metric.metadata.get("cost_currency", "").upper()
+
+        # A live rightsizing recommendation requires all of these. Account-level
+        # billing and a short observed cost period are not resource monthly cost.
+        evidence_gaps: list[str] = []
+        if metric.avg_memory_percent is None:
+            evidence_gaps.append("average memory utilization telemetry")
+        elif metric.avg_memory_percent > 70:
+            evidence_gaps.append("memory utilization below the conservative 70% threshold")
+
+        try:
+            telemetry_hours = float(metric.metadata.get("telemetry_window_hours", "0"))
+        except (TypeError, ValueError):
+            telemetry_hours = 0
+        if telemetry_hours < 168:
+            evidence_gaps.append("at least 7 days of utilization history")
+
+        workload_stability = metric.metadata.get("workload_stability", "").strip().lower()
+        if workload_stability not in {"stable", "steady"}:
+            evidence_gaps.append("workload stability/seasonality evidence")
+
+        verified_monthly_cost = (
+            cost_status == "verified_monthly_cost"
+            and cost_currency == "USD"
+            and metric.monthly_cost_usd > 0
+        )
+        if not verified_monthly_cost:
+            evidence_gaps.append("verified monthly resource-level USD cost")
+
+        # Mock-mode proposals are deliberately simulations, not live decisions.
+        is_simulated_cost = (
+            discovery == "mock"
+            and cost_status == "simulated_monthly_cost"
+            and cost_currency == "USD"
+            and metric.monthly_cost_usd > 0
+        )
+        live_rightsize_evidence_complete = not evidence_gaps
 
         if not eligible:
             hot = metric.peak_cpu_percent >= 80 or metric.production_critical
@@ -280,49 +317,38 @@ def optimize(state: AgentState) -> AgentState:
                 action="no_change" if hot else "review_only",
                 rationale=(
                     f"Peak CPU is {metric.peak_cpu_percent:.1f}%. "
-                    "The conservative policy blocks automated rightsizing."
+                    "Automated rightsizing is withheld by the conservative policy."
                 ),
                 estimated_monthly_savings_usd=0,
                 savings_basis="not_applicable",
                 risk="critical" if hot else "high",
             )
-        elif (
-            discovery == "mock"
-            and cost_status == "simulated_monthly_cost"
-            and cost_currency == "USD"
-            and metric.monthly_cost_usd > 0
-        ):
+        elif is_simulated_cost:
             proposal = OptimizationProposal(
                 resource_id=metric.resource_id,
                 provider=metric.provider,
                 action="rightsize",
                 rationale=(
-                    f"Non-production compute averages "
-                    f"{metric.avg_cpu_percent:.1f}% CPU and peaks at "
-                    f"{metric.peak_cpu_percent:.1f}%. The 30% reduction is "
-                    "a simulated estimate based on mock monthly cost data, "
-                    "not observed savings or a production forecast."
+                    f"Non-production mock compute averages {metric.avg_cpu_percent:.1f}% "
+                    f"CPU and peaks at {metric.peak_cpu_percent:.1f}%. The 30% figure "
+                    "is a simulated estimate, not a live recommendation or forecast."
                 ),
                 estimated_monthly_savings_usd=round(metric.monthly_cost_usd * 0.30, 2),
                 savings_basis="simulated_estimate",
                 risk="medium",
                 proposed_instance_type="smaller-compatible-size; verify provider catalog",
             )
-        elif (
-            cost_status == "verified_monthly_cost"
-            and cost_currency == "USD"
-            and metric.monthly_cost_usd > 0
-        ):
+        elif eligible and verified_monthly_cost and live_rightsize_evidence_complete:
             proposal = OptimizationProposal(
                 resource_id=metric.resource_id,
                 provider=metric.provider,
                 action="rightsize",
                 rationale=(
-                    f"Non-production compute averages "
-                    f"{metric.avg_cpu_percent:.1f}% CPU and peaks at "
-                    f"{metric.peak_cpu_percent:.1f}%. A 30% savings figure "
-                    "is an estimate based on verified monthly resource cost; "
-                    "validate compatibility, pricing, and workload needs."
+                    f"Non-production compute averages {metric.avg_cpu_percent:.1f}% "
+                    f"CPU, peaks at {metric.peak_cpu_percent:.1f}%, and has "
+                    f"{metric.avg_memory_percent:.1f}% average memory utilization. "
+                    "The 30% savings figure is an estimate from verified monthly "
+                    "resource cost; verify compatibility and workload requirements."
                 ),
                 estimated_monthly_savings_usd=round(metric.monthly_cost_usd * 0.30, 2),
                 savings_basis="verified_monthly_cost_estimate",
@@ -330,33 +356,26 @@ def optimize(state: AgentState) -> AgentState:
                 proposed_instance_type="smaller-compatible-size; verify provider catalog",
             )
         else:
+            detail = "; ".join(evidence_gaps)
             observed_cost_note = ""
             if cost_status == "observed_14_day_cost":
                 observed_cost_note = (
-                    " A recent 14-day Cost Explorer amount is attached as "
-                    "evidence, but it is not treated as a monthly cost."
+                    " A recent 14-day Cost Explorer amount is evidence only and "
+                    "is not converted into monthly cost."
                 )
             elif cost_status == "observed_cost_non_usd":
-                observed_cost_note = (
-                    " A resource cost was observed in a non-USD currency; "
-                    "it is not converted or used for USD savings."
-                )
+                observed_cost_note = " A non-USD cost is not converted into USD savings."
             elif cost_status == "ambiguous_resource_cost":
-                observed_cost_note = (
-                    " Resource-cost matching was ambiguous, so no amount "
-                    "was selected."
-                )
+                observed_cost_note = " Resource-cost matching was ambiguous; no amount was selected."
             proposal = OptimizationProposal(
                 resource_id=metric.resource_id,
                 provider=metric.provider,
                 action="review_only",
                 rationale=(
-                    f"Non-production compute averages "
-                    f"{metric.avg_cpu_percent:.1f}% CPU and peaks at "
-                    f"{metric.peak_cpu_percent:.1f}%. No verified monthly "
-                    "USD resource cost is available; a recent-period cost "
-                    "or account-level total is not used to fabricate monthly "
-                    "savings."
+                    f"Non-production compute averages {metric.avg_cpu_percent:.1f}% "
+                    f"CPU and peaks at {metric.peak_cpu_percent:.1f}%. Rightsizing "
+                    f"was withheld because evidence is incomplete: {detail}. "
+                    "No monthly savings are claimed."
                     + observed_cost_note
                 ),
                 estimated_monthly_savings_usd=0,
@@ -364,7 +383,20 @@ def optimize(state: AgentState) -> AgentState:
                 risk="medium",
             )
 
-        proposals.append(proposal.model_dump(mode="json"))
+        proposal_data = proposal.model_dump(mode="json")
+        # Confidence is evidence quality, not operational risk severity.
+        if is_simulated_cost:
+            confidence = "low"
+        elif live_rightsize_evidence_complete and proposal_data["action"] == "rightsize":
+            confidence = "high"
+        elif not evidence_gaps and proposal_data["action"] != "rightsize":
+            confidence = "medium"
+        else:
+            confidence = "low"
+
+        proposal_data["optimization_confidence"] = confidence
+        proposal_data["missing_evidence"] = evidence_gaps
+        proposals.append(proposal_data)
 
     generated_hcl = """# Proposal metadata only; no cloud changes.
 terraform {
@@ -386,6 +418,7 @@ output "finops_review" {
         "events": _event(state, f"Generated {len(proposals)} proposals"),
         "status": "optimized",
     }
+
 
 
 def assess_risk(state: AgentState) -> AgentState:

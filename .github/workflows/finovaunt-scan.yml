@@ -54,13 +54,13 @@ jobs:
       - name: Install Project Dependencies
         run: uv sync --dev
 
-      - name: Install Terraform for HCL validation
+      - name: Install Terraform for HCL Validation
         uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.15.8"
           terraform_wrapper: false
 
-      - name: Verify Terraform installation
+      - name: Verify Terraform Installation
         run: terraform version
 
       - name: Restore Prior History from Latest Successful Scan Artifact
@@ -107,7 +107,7 @@ jobs:
 
       - name: Upload Scan Evidence
         if: ${{ always() && hashFiles('artifacts-live/**') != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: finovaunt-scan
           path: artifacts-live/

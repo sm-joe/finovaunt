@@ -45,6 +45,8 @@ class OptimizationProposal(StrictModel):
     risk: Literal["low", "medium", "high", "critical"]
     requires_human_approval: bool = True
     proposed_instance_type: str | None = None
+    optimization_confidence: Literal["low", "medium", "high"] = "low"
+    missing_evidence: list[str] = Field(default_factory=list, max_length=20)
 
 class ProposalBundle(StrictModel):
     """Schema for a serialized optimization response."""
