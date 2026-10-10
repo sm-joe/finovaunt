@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 import math
 from typing import Any, Mapping, Sequence
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 _UTILIZATION_FIELDS = ("avg_cpu_percent", "peak_cpu_percent", "avg_memory_percent")
 
 
@@ -55,6 +55,9 @@ def _snapshot_resource(resource: Mapping[str, Any]) -> dict[str, Any]:
     savings = resource.get("savings_evidence")
     if not isinstance(savings, Mapping):
         savings = {}
+    telemetry = resource.get("telemetry_evidence")
+    if not isinstance(telemetry, Mapping):
+        telemetry = {}
     return {
         "resource_id": _text(resource.get("resource_id"), "unknown"),
         "provider": _text(resource.get("provider"), "unknown"),
@@ -63,6 +66,23 @@ def _snapshot_resource(resource: Mapping[str, Any]) -> dict[str, Any]:
         "region": _text(resource.get("region"), "unknown"),
         "environment": _text(resource.get("environment"), "unknown"),
         "utilization": {field: _number(utilization.get(field)) for field in _UTILIZATION_FIELDS},
+        "telemetry": {
+            "status": _text(telemetry.get("status"), "unknown"),
+            "source": _text(telemetry.get("source"), "unknown"),
+            "metric": _text(telemetry.get("metric"), "unknown"),
+            "period_seconds": _number(telemetry.get("period_seconds")),
+            "lookback_days": _number(telemetry.get("lookback_days")),
+            "datapoints_returned": _number(telemetry.get("datapoints_returned")),
+            "datapoints_usable": _number(telemetry.get("datapoints_usable")),
+            "datapoints_expected": _number(telemetry.get("datapoints_expected")),
+            "coverage_percent": _number(telemetry.get("coverage_percent")),
+            "first_datapoint_at": _text(telemetry.get("first_datapoint_at")) or None,
+            "latest_datapoint_at": _text(telemetry.get("latest_datapoint_at")) or None,
+            "window_start": _text(telemetry.get("window_start")) or None,
+            "window_end": _text(telemetry.get("window_end")) or None,
+            "warnings": list(telemetry.get("warnings", [])) if isinstance(telemetry.get("warnings"), list) else [],
+        },
+        "data_quality_warnings": list(resource.get("data_quality_warnings", [])) if isinstance(resource.get("data_quality_warnings"), list) else [],
         "cost": {
             "status": _text(cost.get("status"), "cost_unavailable"),
             "evidence_kind": _text(cost.get("evidence_kind"), "none"),
@@ -214,6 +234,7 @@ def build_proposal_history(
         "resource_count": len(compared_resources),
         "resources": compared_resources,
         "account_billing_context": current_report.get("account_billing_context", {}),
+        "scan_provenance": current_report.get("scan_provenance", {}),
         "realized_savings_verified": False,
     }
     history_runs.append(run_record)

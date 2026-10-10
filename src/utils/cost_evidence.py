@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 import math
 from typing import Any, Mapping, Sequence
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 
 
 def _number(value: Any) -> float | None:
@@ -28,6 +28,10 @@ def _text(value: Any, default: str = "") -> str:
     if value is None:
         return default
     return str(value).strip()
+
+
+def _mapping_for_provenance(value: Any) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
 
 
 def _cost_evidence(metric: Mapping[str, Any]) -> dict[str, Any]:
@@ -113,6 +117,51 @@ def _cost_evidence(metric: Mapping[str, Any]) -> dict[str, Any]:
         "currency": amount_currency,
         "period": period,
         "monthly_cost_usd": monthly_cost if status == "verified_monthly_cost" else None,
+        "warnings": warnings,
+    }
+
+
+def _telemetry_evidence(metric: Mapping[str, Any]) -> dict[str, Any]:
+    metadata = metric.get("metadata")
+    if not isinstance(metadata, Mapping):
+        metadata = {}
+
+    discovery = _text(metadata.get("discovery"), "unknown")
+    avg_cpu = _number(metric.get("avg_cpu_percent"))
+    peak_cpu = _number(metric.get("peak_cpu_percent"))
+    datapoints = _number(metadata.get("telemetry_datapoints_usable"))
+    coverage = _number(metadata.get("telemetry_coverage_percent"))
+    source = _text(metadata.get("metrics_source"), "unknown")
+    if discovery == "mock":
+        status = "simulated"
+        warnings = ["CPU utilization is simulated and must not be treated as live telemetry."]
+    elif avg_cpu is None or peak_cpu is None:
+        status = "unavailable"
+        warnings = ["Usable CPU utilization values are not present in this resource record."]
+    elif datapoints is None:
+        status = "available_metadata_incomplete"
+        warnings = ["CPU values are present, but datapoint coverage metadata was not recorded by this scan."]
+    else:
+        status = "available"
+        warnings = []
+
+    if _text(metadata.get("memory_status"), "not_collected") == "not_collected":
+        warnings.append("Memory utilization was not collected.")
+
+    return {
+        "status": status,
+        "source": source,
+        "metric": _text(metadata.get("telemetry_metric"), "CPUUtilization" if source != "unknown" else "unknown"),
+        "period_seconds": _number(metadata.get("telemetry_period_seconds")),
+        "lookback_days": _number(metadata.get("telemetry_lookback_days", metadata.get("metrics_window_days"))),
+        "window_start": _text(metadata.get("telemetry_window_start")) or None,
+        "window_end": _text(metadata.get("telemetry_window_end")) or None,
+        "datapoints_returned": _number(metadata.get("telemetry_datapoints_returned")),
+        "datapoints_usable": datapoints,
+        "datapoints_expected": _number(metadata.get("telemetry_datapoints_expected")),
+        "coverage_percent": coverage,
+        "first_datapoint_at": _text(metadata.get("telemetry_first_datapoint_at")) or None,
+        "latest_datapoint_at": _text(metadata.get("telemetry_latest_datapoint_at")) or None,
         "warnings": warnings,
     }
 
@@ -204,6 +253,7 @@ def build_cost_evidence_report(
         if not isinstance(metadata, Mapping):
             metadata = {}
         cost = _cost_evidence(raw_metric)
+        telemetry = _telemetry_evidence(raw_metric)
         proposal = proposal_by_resource.get(resource_id)
         savings = _savings_evidence(proposal, cost)
         utilization = {
@@ -212,6 +262,7 @@ def build_cost_evidence_report(
             "avg_memory_percent": _number(raw_metric.get("avg_memory_percent")),
         }
         data_quality = list(cost["warnings"])
+        data_quality.extend(telemetry["warnings"])
         if proposal is None:
             data_quality.append("No proposal matched this resource ID.")
         if savings["classification"] == "not_estimable_from_available_evidence":
@@ -226,6 +277,7 @@ def build_cost_evidence_report(
             "environment": _text(raw_metric.get("environment"), "unknown"),
             "production_critical": bool(raw_metric.get("production_critical", False)),
             "utilization": utilization,
+            "telemetry_evidence": telemetry,
             "cost_evidence": cost,
             "recommendation": {
                 "action": _text((proposal or {}).get("action"), "not_proposed"),
@@ -272,10 +324,39 @@ def build_cost_evidence_report(
         key = record["savings_evidence"]["classification"]
         savings_counts[key] = savings_counts.get(key, 0) + 1
 
+    discovery_modes = sorted({
+        _text(_mapping_for_provenance(item.get("metadata")).get("discovery"), "unknown")
+        for item in metrics if isinstance(item, Mapping)
+    })
+    regions = sorted({
+        _text(item.get("region")) for item in metrics
+        if isinstance(item, Mapping) and _text(item.get("region"))
+    })
+    providers = sorted({
+        _text(item.get("provider")) for item in metrics
+        if isinstance(item, Mapping) and _text(item.get("provider"))
+    })
+    collection_warnings = state.get("collection_warnings", [])
+    if not isinstance(collection_warnings, Sequence) or isinstance(collection_warnings, (str, bytes)):
+        collection_warnings = []
+    telemetry_status_counts: dict[str, int] = {}
+    for record in records:
+        status = record["telemetry_evidence"]["status"]
+        telemetry_status_counts[status] = telemetry_status_counts.get(status, 0) + 1
+
     return {
         "schema_version": SCHEMA_VERSION,
         "run_id": _text(state.get("run_id"), "unknown"),
         "generated_at": timestamp.astimezone(UTC).isoformat().replace("+00:00", "Z"),
+        "scan_provenance": {
+            "discovery_modes": discovery_modes,
+            "providers": providers,
+            "regions": regions,
+            "resources_in_evidence": len(records),
+            "collection_warnings": [str(item) for item in collection_warnings if str(item).strip()],
+            "telemetry_status_counts": telemetry_status_counts,
+            "coverage_scope": "Resources represented in this artifact only; resources excluded during discovery are described by collection warnings.",
+        },
         "summary": {
             "resource_count": len(records),
             "cost_evidence_status_counts": counts,
