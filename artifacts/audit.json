@@ -1,8 +1,9 @@
 {
   "events": [
-    "Collected 4 mock metrics",
-    "Billing summary status: not_applicable",
-    "Generated 4 proposals",
-    "Risk assessment complete: 4 flags"
+    "Collected 1 aws metrics",
+    "EC2 resource-level costs unavailable; no resource costs or savings will be inferred from account-level billing.",
+    "Billing summary status: available",
+    "Generated 1 proposals",
+    "Risk assessment complete: 2 flags"
   ]
 }

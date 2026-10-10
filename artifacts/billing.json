@@ -1,5 +1,344 @@
 {
-  "status": "not_applicable",
-  "reason": "Billing collection is enabled only in AWS discovery mode.",
-  "resource_attribution": "not_available"
+  "status": "available",
+  "period_start": "2026-09-01",
+  "period_end_exclusive": "2026-10-01",
+  "metric": "UnblendedCost",
+  "currency": "USD",
+  "total_cost": 15.2449304707,
+  "group_by": [
+    "SERVICE",
+    "REGION"
+  ],
+  "groups": [
+    {
+      "service": "EC2 - Other",
+      "region": "us-east-1",
+      "amount": 3.4663985572,
+      "currency": "USD"
+    },
+    {
+      "service": "Tax",
+      "region": "NoRegion",
+      "amount": 2.31,
+      "currency": "USD"
+    },
+    {
+      "service": "EC2 - Other",
+      "region": "ap-south-1",
+      "amount": 2.0615042334,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS Key Management Service",
+      "region": "us-east-1",
+      "amount": 1.986111127,
+      "currency": "USD"
+    },
+    {
+      "service": "Amazon Virtual Private Cloud",
+      "region": "eu-central-1",
+      "amount": 1.579559725,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS Key Management Service",
+      "region": "eu-west-1",
+      "amount": 0.9472222298,
+      "currency": "USD"
+    },
+    {
+      "service": "Amazon Elastic Compute Cloud - Compute",
+      "region": "us-east-1",
+      "amount": 0.9302636064,
+      "currency": "USD"
+    },
+    {
+      "service": "Amazon Inspector",
+      "region": "us-east-1",
+      "amount": 0.5757,
+      "currency": "USD"
+    },
+    {
+      "service": "EC2 - Other",
+      "region": "eu-central-1",
+      "amount": 0.3343096234,
+      "currency": "USD"
+    },
+    {
+      "service": "Amazon Virtual Private Cloud",
+      "region": "us-east-1",
+      "amount": 0.28683474,
+      "currency": "USD"
+    },
+    {
+      "service": "Amazon Simple Storage Service",
+      "region": "us-east-1",
+      "amount": 0.2582530472,
+      "currency": "USD"
+    },
+    {
+      "service": "Amazon Virtual Private Cloud",
+      "region": "ap-south-1",
+      "amount": 0.21453891,
+      "currency": "USD"
+    },
+    {
+      "service": "Amazon Elastic Load Balancing",
+      "region": "ap-south-1",
+      "amount": 0.0717042478,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS Secrets Manager",
+      "region": "us-east-1",
+      "amount": 0.0691419729,
+      "currency": "USD"
+    },
+    {
+      "service": "Amazon Relational Database Service",
+      "region": "ap-south-1",
+      "amount": 0.0678812684,
+      "currency": "USD"
+    },
+    {
+      "service": "Amazon Elastic Compute Cloud - Compute",
+      "region": "ap-south-1",
+      "amount": 0.044600042,
+      "currency": "USD"
+    },
+    {
+      "service": "Amazon EC2 Container Registry (ECR)",
+      "region": "us-east-1",
+      "amount": 0.0240481894,
+      "currency": "USD"
+    },
+    {
+      "service": "Amazon Simple Storage Service",
+      "region": "ap-south-1",
+      "amount": 0.0138305418,
+      "currency": "USD"
+    },
+    {
+      "service": "Amazon Simple Email Service",
+      "region": "us-east-1",
+      "amount": 0.0014,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS Secrets Manager",
+      "region": "ap-south-1",
+      "amount": 0.0013424337,
+      "currency": "USD"
+    },
+    {
+      "service": "Amazon Elastic Compute Cloud - Compute",
+      "region": "eu-central-1",
+      "amount": 0.0001463003,
+      "currency": "USD"
+    },
+    {
+      "service": "Amazon Simple Storage Service",
+      "region": "eu-west-1",
+      "amount": 0.000125,
+      "currency": "USD"
+    },
+    {
+      "service": "Amazon DynamoDB",
+      "region": "ap-south-1",
+      "amount": 7.675e-06,
+      "currency": "USD"
+    },
+    {
+      "service": "Amazon API Gateway",
+      "region": "us-east-1",
+      "amount": 7e-06,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS CloudTrail",
+      "region": "ap-northeast-1",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS CloudTrail",
+      "region": "ap-northeast-2",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS CloudTrail",
+      "region": "ap-northeast-3",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS CloudTrail",
+      "region": "ap-south-1",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS CloudTrail",
+      "region": "ap-southeast-1",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS CloudTrail",
+      "region": "ap-southeast-2",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS CloudTrail",
+      "region": "ca-central-1",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS CloudTrail",
+      "region": "eu-central-1",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS CloudTrail",
+      "region": "eu-north-1",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS CloudTrail",
+      "region": "eu-west-1",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS CloudTrail",
+      "region": "eu-west-2",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS CloudTrail",
+      "region": "eu-west-3",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS CloudTrail",
+      "region": "sa-east-1",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS CloudTrail",
+      "region": "us-east-1",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS CloudTrail",
+      "region": "us-east-2",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS CloudTrail",
+      "region": "us-west-1",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS CloudTrail",
+      "region": "us-west-2",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS Glue",
+      "region": "ap-south-1",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS Glue",
+      "region": "us-east-1",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS Key Management Service",
+      "region": "ap-south-1",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS Key Management Service",
+      "region": "eu-central-1",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "AWS Lambda",
+      "region": "us-east-1",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "Amazon DynamoDB",
+      "region": "us-east-1",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "Amazon Simple Notification Service",
+      "region": "ap-south-1",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "Amazon Simple Notification Service",
+      "region": "us-east-1",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "Amazon Simple Queue Service",
+      "region": "ap-south-1",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "Amazon Simple Queue Service",
+      "region": "us-east-1",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "Amazon Simple Storage Service",
+      "region": "global",
+      "amount": 0.0,
+      "currency": "USD"
+    },
+    {
+      "service": "AmazonCloudWatch",
+      "region": "us-east-1",
+      "amount": 0.0,
+      "currency": "USD"
+    }
+  ],
+  "resource_attribution": "not_available",
+  "note": "Account-level costs grouped by service and region. Cost Explorer data can be delayed. These amounts must not be treated as individual resource costs or realized savings.",
+  "ec2_resource_costs": {
+    "status": "unavailable",
+    "resource_type": "EC2",
+    "period_start": "2026-09-26",
+    "period_end_exclusive": "2026-10-10",
+    "granularity": "DAILY",
+    "reason": "EC2 resource-cost collection failed: ClientError: An error occurred (AccessDeniedException) when calling the GetCostAndUsageWithResources operation: Resource-level data granularity is an opt-in only feature. You can be enable this feature from the PAYER account\u2019s Cost Explorer Settings page.",
+    "resources": [],
+    "resource_attribution": "not_available"
+  }
 }

@@ -1,44 +1,11 @@
 {
-  "run_id": "54a752820f3c",
+  "run_id": "750541a9ed0d",
   "proposals": [
     {
-      "resource_id": "aws:ec2:eu-central-1:worker-01",
-      "provider": "aws",
-      "action": "rightsize",
-      "rationale": "Non-production compute averages 3.8% CPU and peaks at 11.5%. The 30% reduction is a simulated estimate based on mock monthly cost data, not observed savings or a production forecast.",
-      "estimated_monthly_savings_usd": 85.92,
-      "savings_basis": "simulated_estimate",
-      "risk": "medium",
-      "requires_human_approval": true,
-      "proposed_instance_type": "smaller-compatible-size; verify provider catalog"
-    },
-    {
-      "resource_id": "aws:rds:eu-central-1:payments-primary",
+      "resource_id": "aws:ec2:eu-central-1:i-02dd62b24cadeccce",
       "provider": "aws",
       "action": "no_change",
-      "rationale": "Peak CPU is 94.0%. The conservative policy blocks automated rightsizing.",
-      "estimated_monthly_savings_usd": 0.0,
-      "savings_basis": "not_applicable",
-      "risk": "critical",
-      "requires_human_approval": true,
-      "proposed_instance_type": null
-    },
-    {
-      "resource_id": "gcp:compute:us-central1:batch-02",
-      "provider": "gcp",
-      "action": "rightsize",
-      "rationale": "Non-production compute averages 8.2% CPU and peaks at 24.0%. The 30% reduction is a simulated estimate based on mock monthly cost data, not observed savings or a production forecast.",
-      "estimated_monthly_savings_usd": 58.42,
-      "savings_basis": "simulated_estimate",
-      "risk": "medium",
-      "requires_human_approval": true,
-      "proposed_instance_type": "smaller-compatible-size; verify provider catalog"
-    },
-    {
-      "resource_id": "gcp:database:us-central1:analytics-prod",
-      "provider": "gcp",
-      "action": "no_change",
-      "rationale": "Peak CPU is 89.0%. The conservative policy blocks automated rightsizing.",
+      "rationale": "Peak CPU is 46.7%. The conservative policy blocks automated rightsizing.",
       "estimated_monthly_savings_usd": 0.0,
       "savings_basis": "not_applicable",
       "risk": "critical",
@@ -47,9 +14,7 @@
     }
   ],
   "risk_summary": [
-    "aws:rds:eu-central-1:payments-primary: production requires review",
-    "aws:rds:eu-central-1:payments-primary: critical risk",
-    "gcp:database:us-central1:analytics-prod: production requires review",
-    "gcp:database:us-central1:analytics-prod: critical risk"
+    "aws:ec2:eu-central-1:i-02dd62b24cadeccce: production requires review",
+    "aws:ec2:eu-central-1:i-02dd62b24cadeccce: critical risk"
   ]
 }
