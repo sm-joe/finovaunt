@@ -1,4 +1,4 @@
-name: Finovaunt read-only cost scan
+name: Finovaunt RO Cost Scan
 
 on:
   workflow_dispatch:
@@ -25,7 +25,7 @@ concurrency:
 
 jobs:
   scan:
-    name: Read-only FinOps scan
+    name: Read-only FinOps Scan
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -38,23 +38,23 @@ jobs:
       GH_TOKEN: ${{ github.token }}
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - name: Check out Repository
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v6
+      - name: Set up UV
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
 
-      - name: Install project dependencies
+      - name: Install Project Dependencies
         run: uv sync --dev
 
-      - name: Restore prior history from latest successful scan artifact
+      - name: Restore Prior History from Latest Successful Scan Artifact
         shell: bash
         run: |
           set -euo pipefail
@@ -81,22 +81,22 @@ jobs:
             echo "No previous successful scan run found; starting a new history."
           fi
 
-      - name: Configure AWS credentials through GitHub OIDC
+      - name: Configure AWS Credentials through GitHub OIDC
         if: ${{ (github.event.inputs.discovery_mode || 'aws') == 'aws' }}
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.FINOPS_AWS_ROLE_ARN }}
           aws-region: ${{ env.FINOPS_AWS_REGION }}
           role-session-name: FinovauntReadOnlyScan
 
-      - name: Verify AWS identity
+      - name: Verify AWS Identity
         if: ${{ (github.event.inputs.discovery_mode || 'aws') == 'aws' }}
         run: aws sts get-caller-identity
 
-      - name: Run read-only scan
+      - name: Run Read-Only Scan
         run: uv run python scripts/run_readonly_scan.py
 
-      - name: Upload scan evidence
+      - name: Upload Scan Evidence
         if: ${{ always() && hashFiles('artifacts-live/**') != '' }}
         uses: actions/upload-artifact@v4
         with:
