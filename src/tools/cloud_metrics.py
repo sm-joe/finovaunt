@@ -1,6 +1,6 @@
 """Mock and read-only AWS cloud metrics collection."""
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from statistics import fmean
 
 from src.utils.guardrails import ResourceMetric
@@ -23,6 +23,8 @@ def collect_mock_metrics() -> list[ResourceMetric]:
             metadata={
                 "instance_type": "m6i.2xlarge",
                 "discovery": "mock",
+                "cost_status": "simulated_monthly_cost",
+                "cost_currency": "USD",
             },
         ),
         ResourceMetric(
@@ -37,7 +39,12 @@ def collect_mock_metrics() -> list[ResourceMetric]:
             peak_cpu_percent=94,
             avg_memory_percent=81,
             production_critical=True,
-            metadata={"engine": "postgres", "discovery": "mock"},
+            metadata={
+                "engine": "postgres",
+                "discovery": "mock",
+                "cost_status": "simulated_monthly_cost",
+                "cost_currency": "USD",
+            },
         ),
         ResourceMetric(
             provider="gcp",
@@ -50,7 +57,12 @@ def collect_mock_metrics() -> list[ResourceMetric]:
             avg_cpu_percent=8.2,
             peak_cpu_percent=24,
             avg_memory_percent=31,
-            metadata={"machine_type": "n2-standard-8", "discovery": "mock"},
+            metadata={
+                "machine_type": "n2-standard-8",
+                "discovery": "mock",
+                "cost_status": "simulated_monthly_cost",
+                "cost_currency": "USD",
+            },
         ),
         ResourceMetric(
             provider="gcp",
@@ -67,6 +79,8 @@ def collect_mock_metrics() -> list[ResourceMetric]:
             metadata={
                 "engine": "cloudsql-postgres",
                 "discovery": "mock",
+                "cost_status": "simulated_monthly_cost",
+                "cost_currency": "USD",
             },
         ),
     ]
@@ -171,7 +185,7 @@ def collect_aws_metrics() -> tuple[list[ResourceMetric], list[str]]:
     rds = session.client("rds")
     cloudwatch = session.client("cloudwatch")
 
-    end_time = datetime.now(timezone.utc)
+    end_time = datetime.now(UTC)
     start_time = end_time - timedelta(days=lookback_days)
 
     metrics: list[ResourceMetric] = []

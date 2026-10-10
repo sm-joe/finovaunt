@@ -1,18 +1,22 @@
 """LangGraph FinOps workflow: collect, optimize, assess, approve, branch."""
 
+import hashlib
 import json
 import os
 import re
-import subprocess
-import uuid
 import shutil
+import subprocess
 import tempfile
+import uuid
 from pathlib import Path
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from src.tools.aws_costs import collect_aws_cost_summary
+from src.tools.aws_costs import (
+    collect_aws_cost_summary,
+    collect_ec2_resource_costs,
+)
 from src.tools.cloud_metrics import (
     collect_aws_metrics,
     collect_mock_metrics,
@@ -50,6 +54,71 @@ def _event(state: AgentState, message: str) -> list[str]:
     ]
 
 
+def _attach_ec2_resource_costs(
+    metrics: list[ResourceMetric],
+    resource_costs: dict[str, Any],
+) -> list[ResourceMetric]:
+    """Attach recent costs only when EC2 resource ID and region match exactly.
+
+    The observed 14-day amount is not converted into monthly cost.
+    ResourceMetric.monthly_cost_usd remains unchanged.
+    """
+    if resource_costs.get("status") != "available":
+        return metrics
+
+    indexed: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for item in resource_costs.get("resources", []):
+        if not isinstance(item, dict):
+            continue
+        resource_id = str(item.get("resource_id", "")).strip()
+        region = str(item.get("region", "")).strip()
+        if resource_id and region:
+            indexed.setdefault((resource_id, region), []).append(item)
+
+    for metric in metrics:
+        if metric.provider != "aws" or metric.resource_type != "compute":
+            continue
+        parts = metric.resource_id.split(":", 3)
+        if len(parts) != 4 or parts[0] != "aws" or parts[1] != "ec2":
+            continue
+        region, instance_id = parts[2], parts[3]
+        if region != metric.region or not instance_id:
+            continue
+
+        matches = indexed.get((instance_id, region), [])
+        if len(matches) > 1:
+            metric.metadata["cost_status"] = "ambiguous_resource_cost"
+            continue
+        if not matches:
+            continue
+
+        item = matches[0]
+        currency = str(item.get("currency", "")).upper()
+        try:
+            amount = float(item["amount"])
+        except (KeyError, TypeError, ValueError):
+            metric.metadata["cost_status"] = "invalid_resource_cost"
+            continue
+        if not (amount >= 0 and amount < float("inf")):
+            metric.metadata["cost_status"] = "invalid_resource_cost"
+            continue
+
+        metric.metadata["observed_cost_period_amount"] = str(amount)
+        metric.metadata["observed_cost_currency"] = currency or "unknown"
+        metric.metadata["observed_cost_period_start"] = str(
+            resource_costs.get("period_start", "")
+        )
+        metric.metadata["observed_cost_period_end_exclusive"] = str(
+            resource_costs.get("period_end_exclusive", "")
+        )
+        metric.metadata["cost_source"] = "aws_cost_explorer_resource_id"
+        metric.metadata["cost_status"] = (
+            "observed_14_day_cost" if currency == "USD"
+            else "observed_cost_non_usd"
+        )
+    return metrics
+
+
 def collect_data(state: AgentState) -> AgentState:
     """Collect mock or live AWS metrics and a separate billing summary."""
     run_id = state.get("run_id") or uuid.uuid4().hex[:12]
@@ -68,7 +137,7 @@ def collect_data(state: AgentState) -> AgentState:
     elif mode == "aws":
         try:
             metrics, warnings = collect_aws_metrics()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — return a controlled failure when AWS metrics collection fails.
             return {
                 "run_id": run_id,
                 "metrics": [],
@@ -87,19 +156,44 @@ def collect_data(state: AgentState) -> AgentState:
                 "status": "collection_failed",
             }
 
-        # Billing is a separate data source. A billing failure must not be
-        # misrepresented as a zero cost or as a failed CPU collection.
+        # Account-level billing and resource-level costs are separate
+        # sources. Failure in either must not invalidate CPU telemetry.
         try:
             billing_summary = collect_aws_cost_summary()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — billing failure must not prevent metrics collection.
             billing_summary = {
                 "status": "unavailable",
                 "reason": scrub_sensitive_text(str(exc)),
                 "resource_attribution": "not_available",
             }
             warnings.append(
-                "AWS billing data unavailable; resource costs and savings "
-                "will not be inferred from account-level billing."
+                "AWS billing data unavailable (account-level billing); see billing.json."
+            )
+
+        try:
+            resource_costs = collect_ec2_resource_costs()
+        except Exception as exc:  # noqa: BLE001 — resource attribution is optional and must fail safely.
+            resource_costs = {
+                "status": "unavailable",
+                "resource_type": "EC2",
+                "reason": scrub_sensitive_text(str(exc)),
+                "resources": [],
+                "resource_attribution": "not_available",
+            }
+
+        # Scrub collector-provided error details before they enter workflow
+        # state or billing.json. Keep account and resource costs separate.
+        resource_reason = resource_costs.get("reason")
+        if isinstance(resource_reason, str):
+            resource_costs["reason"] = scrub_sensitive_text(resource_reason)
+
+        billing_summary["ec2_resource_costs"] = resource_costs
+        metrics = _attach_ec2_resource_costs(metrics, resource_costs)
+
+        if resource_costs.get("status") != "available":
+            warnings.append(
+                "EC2 resource-level costs unavailable; no resource costs "
+                "or savings will be inferred from account-level billing."
             )
 
     else:
@@ -158,12 +252,11 @@ def collect_data(state: AgentState) -> AgentState:
 
 
 def optimize(state: AgentState) -> AgentState:
-    """Generate conservative proposals without inventing live savings."""
+    """Generate proposals with explicit cost provenance and conservative savings."""
     proposals: list[dict[str, Any]] = []
 
     for raw_metric in state.get("metrics", []):
         metric = ResourceMetric.model_validate(raw_metric)
-
         eligible = (
             metric.resource_type == "compute"
             and metric.environment in {"dev", "test"}
@@ -171,24 +264,30 @@ def optimize(state: AgentState) -> AgentState:
             and metric.peak_cpu_percent < 35
             and not metric.production_critical
         )
+        discovery = metric.metadata.get("discovery", "")
+        cost_status = metric.metadata.get("cost_status", "not_collected")
+        cost_currency = metric.metadata.get("cost_currency", "").upper()
 
-        if eligible and metric.monthly_cost_usd <= 0:
+        if not eligible:
+            hot = metric.peak_cpu_percent >= 80 or metric.production_critical
             proposal = OptimizationProposal(
                 resource_id=metric.resource_id,
                 provider=metric.provider,
-                action="review_only",
+                action="no_change" if hot else "review_only",
                 rationale=(
-                    f"Non-production compute averages "
-                    f"{metric.avg_cpu_percent:.1f}% CPU and peaks at "
-                    f"{metric.peak_cpu_percent:.1f}%. No verified "
-                    "resource-level cost is available, so savings cannot "
-                    "be estimated safely."
+                    f"Peak CPU is {metric.peak_cpu_percent:.1f}%. "
+                    "The conservative policy blocks automated rightsizing."
                 ),
                 estimated_monthly_savings_usd=0,
-                risk="medium",
+                savings_basis="not_applicable",
+                risk="critical" if hot else "high",
             )
-
-        elif eligible:
+        elif (
+            discovery == "mock"
+            and cost_status == "simulated_monthly_cost"
+            and cost_currency == "USD"
+            and metric.monthly_cost_usd > 0
+        ):
             proposal = OptimizationProposal(
                 resource_id=metric.resource_id,
                 provider=metric.provider,
@@ -196,34 +295,69 @@ def optimize(state: AgentState) -> AgentState:
                 rationale=(
                     f"Non-production compute averages "
                     f"{metric.avg_cpu_percent:.1f}% CPU and peaks at "
-                    f"{metric.peak_cpu_percent:.1f}%. Review a one-step "
-                    "reduction after verifying workload requirements."
+                    f"{metric.peak_cpu_percent:.1f}%. The 30% reduction is "
+                    "a simulated estimate based on mock monthly cost data, "
+                    "not observed savings or a production forecast."
                 ),
-                estimated_monthly_savings_usd=round(
-                    metric.monthly_cost_usd * 0.30,
-                    2,
-                ),
+                estimated_monthly_savings_usd=round(metric.monthly_cost_usd * 0.30, 2),
+                savings_basis="simulated_estimate",
                 risk="medium",
-                proposed_instance_type=(
-                    "smaller-compatible-size; verify provider catalog"
-                ),
+                proposed_instance_type="smaller-compatible-size; verify provider catalog",
             )
-
-        else:
-            hot = (
-                metric.peak_cpu_percent >= 80
-                or metric.production_critical
-            )
+        elif (
+            cost_status == "verified_monthly_cost"
+            and cost_currency == "USD"
+            and metric.monthly_cost_usd > 0
+        ):
             proposal = OptimizationProposal(
                 resource_id=metric.resource_id,
                 provider=metric.provider,
-                action="no_change" if hot else "review_only",
+                action="rightsize",
                 rationale=(
-                    f"Peak CPU is {metric.peak_cpu_percent:.1f}%. "
-                    "The conservative policy blocks automatic rightsizing."
+                    f"Non-production compute averages "
+                    f"{metric.avg_cpu_percent:.1f}% CPU and peaks at "
+                    f"{metric.peak_cpu_percent:.1f}%. A 30% savings figure "
+                    "is an estimate based on verified monthly resource cost; "
+                    "validate compatibility, pricing, and workload needs."
+                ),
+                estimated_monthly_savings_usd=round(metric.monthly_cost_usd * 0.30, 2),
+                savings_basis="verified_monthly_cost_estimate",
+                risk="medium",
+                proposed_instance_type="smaller-compatible-size; verify provider catalog",
+            )
+        else:
+            observed_cost_note = ""
+            if cost_status == "observed_14_day_cost":
+                observed_cost_note = (
+                    " A recent 14-day Cost Explorer amount is attached as "
+                    "evidence, but it is not treated as a monthly cost."
+                )
+            elif cost_status == "observed_cost_non_usd":
+                observed_cost_note = (
+                    " A resource cost was observed in a non-USD currency; "
+                    "it is not converted or used for USD savings."
+                )
+            elif cost_status == "ambiguous_resource_cost":
+                observed_cost_note = (
+                    " Resource-cost matching was ambiguous, so no amount "
+                    "was selected."
+                )
+            proposal = OptimizationProposal(
+                resource_id=metric.resource_id,
+                provider=metric.provider,
+                action="review_only",
+                rationale=(
+                    f"Non-production compute averages "
+                    f"{metric.avg_cpu_percent:.1f}% CPU and peaks at "
+                    f"{metric.peak_cpu_percent:.1f}%. No verified monthly "
+                    "USD resource cost is available; a recent-period cost "
+                    "or account-level total is not used to fabricate monthly "
+                    "savings."
+                    + observed_cost_note
                 ),
                 estimated_monthly_savings_usd=0,
-                risk="critical" if hot else "high",
+                savings_basis="unavailable",
+                risk="medium",
             )
 
         proposals.append(proposal.model_dump(mode="json"))
@@ -245,10 +379,7 @@ output "finops_review" {
     return {
         "proposals": proposals,
         "generated_hcl": generated_hcl,
-        "events": _event(
-            state,
-            f"Generated {len(proposals)} proposals",
-        ),
+        "events": _event(state, f"Generated {len(proposals)} proposals"),
         "status": "optimized",
     }
 
@@ -345,7 +476,7 @@ def approval(state: AgentState) -> AgentState:
 
     print(
         f"Run {state.get('run_id')} | "
-        f"estimated savings ${total_savings:.2f}/month"
+        f"proposal savings estimate ${total_savings:.2f}/month (may include simulated mock estimates; not realized savings)"
     )
 
     billing = state.get("billing_summary", {})
@@ -439,6 +570,26 @@ def _write_artifacts(directory: Path, state: AgentState) -> None:
         encoding="utf-8",
     )
 
+    # Record hashes of all generated files except the manifest itself.
+    files = sorted(
+        path
+        for path in directory.iterdir()
+        if path.is_file() and path.name != "manifest.json"
+    )
+
+    manifest = {
+        "run_id": state.get("run_id"),
+        "algorithm": "sha256",
+        "files": {
+            path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in files
+        },
+    }
+
+    (directory / "manifest.json").write_text(
+        json.dumps(manifest, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 def write_branch(s: AgentState) -> AgentState:
     """Write and commit local proposal artifacts with rollback on failure."""
@@ -491,7 +642,7 @@ def write_branch(s: AgentState) -> AgentState:
         out = Path(out_name).resolve()
         try:
             _write_artifacts(out, s)
-        except Exception:
+        except Exception:  # noqa: BLE001 — convert artifact-write failures into a controlled workflow result.
             return {
                 "status": "write_failed",
                 "events": _event(s, "Local artifact writing failed"),
@@ -611,7 +762,7 @@ def write_branch(s: AgentState) -> AgentState:
             ),
         }
 
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — trigger rollback for unexpected Git workflow failures.
         rollback_ok = True
 
         # The original repository was clean, so restore the generated output
@@ -651,7 +802,7 @@ def write_branch(s: AgentState) -> AgentState:
                     if delete_branch is None or delete_branch.returncode != 0:
                         rollback_ok = False
 
-        except Exception:
+        except Exception:  # noqa: BLE001 — record rollback failure instead of masking the original failure.
             rollback_ok = False
 
         message = "Proposal generation failed; rollback completed"

@@ -1,9 +1,12 @@
 """Safety tests for the Autonomous FinOps agent workflow."""
 
+import hashlib
 import json
 import subprocess
-import src.agent as agent_module
 
+import pytest
+
+import src.agent as agent_module
 from src.agent import (
     _write_artifacts,
     reject,
@@ -108,7 +111,7 @@ def test_artifact_writer_creates_local_proposal_files(
         ],
         "risk_summary": ["Human review required"],
         "generated_hcl": (
-            '# Proposal metadata only; no cloud changes.\n'
+            "# Proposal metadata only; no cloud changes.\n"
         ),
         "events": ["Test workflow"],
         "billing_summary": {
@@ -130,9 +133,15 @@ def test_artifact_writer_creates_local_proposal_files(
     assert audit_path.is_file()
     assert billing_path.is_file()
 
-    proposal = json.loads(proposal_path.read_text(encoding="utf-8"))
-    audit = json.loads(audit_path.read_text(encoding="utf-8"))
-    billing = json.loads(billing_path.read_text(encoding="utf-8"))
+    proposal = json.loads(
+        proposal_path.read_text(encoding="utf-8")
+    )
+    audit = json.loads(
+        audit_path.read_text(encoding="utf-8")
+    )
+    billing = json.loads(
+        billing_path.read_text(encoding="utf-8")
+    )
 
     assert proposal["run_id"] == "test-run-001"
     assert len(proposal["proposals"]) == 1
@@ -147,6 +156,7 @@ def test_artifact_writer_creates_local_proposal_files(
     assert "no cloud changes" in terraform_path.read_text(
         encoding="utf-8"
     )
+
 
 def test_write_branch_blocks_unapproved_state(
     tmp_path,
@@ -170,6 +180,7 @@ def test_write_branch_blocks_unapproved_state(
     )
     assert not (tmp_path / "artifacts").exists()
 
+
 def test_write_branch_rolls_back_when_artifact_generation_fails(
     tmp_path,
     monkeypatch,
@@ -190,8 +201,15 @@ def test_write_branch_rolls_back_when_artifact_generation_fails(
     run_git("config", "user.name", "FinOps Test")
     run_git("config", "user.email", "finops-test@example.invalid")
 
-    (repo / ".gitignore").write_text("artifacts/\n", encoding="utf-8")
-    (repo / "README.md").write_text("baseline\n", encoding="utf-8")
+    (repo / ".gitignore").write_text(
+        "artifacts/\n",
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text(
+        "baseline\n",
+        encoding="utf-8",
+    )
+
     run_git("add", ".gitignore", "README.md")
     run_git("commit", "-m", "test: baseline")
 
@@ -204,7 +222,10 @@ def test_write_branch_rolls_back_when_artifact_generation_fails(
 
     monkeypatch.setenv("FINOPS_GIT_REPO", str(repo))
     monkeypatch.setenv("FINOPS_OUTPUT_DIR", "artifacts")
-    monkeypatch.setenv("FINOPS_GIT_BRANCH_PREFIX", "finops/optimization")
+    monkeypatch.setenv(
+        "FINOPS_GIT_BRANCH_PREFIX",
+        "finops/optimization",
+    )
 
     def fail_after_writing(output_path, state):
         output_path.mkdir(parents=True, exist_ok=True)
@@ -229,9 +250,11 @@ def test_write_branch_rolls_back_when_artifact_generation_fails(
     )
 
     assert result["status"] == "write_failed"
+
     assert (artifacts / "previous.txt").read_text(
         encoding="utf-8"
     ) == "preserve this file\n"
+
     assert not (artifacts / "partial.txt").exists()
 
     current = subprocess.run(
@@ -244,7 +267,12 @@ def test_write_branch_rolls_back_when_artifact_generation_fails(
     assert current.stdout.strip() == "main"
 
     branch = subprocess.run(
-        ["git", "branch", "--list", "finops/optimization/rollback-test"],
+        [
+            "git",
+            "branch",
+            "--list",
+            "finops/optimization/rollback-test",
+        ],
         cwd=repo,
         check=True,
         capture_output=True,
@@ -260,3 +288,146 @@ def test_write_branch_rolls_back_when_artifact_generation_fails(
         text=True,
     )
     assert not status.stdout.strip()
+
+
+@pytest.mark.parametrize("failed_command", ["add", "commit"])
+def test_write_branch_rolls_back_on_git_failure(
+    tmp_path,
+    monkeypatch,
+    failed_command,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    real_run = subprocess.run
+
+    def run_git(*args: str) -> None:
+        real_run(
+            ["git", *args],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+    run_git("init", "-b", "main")
+    run_git("config", "user.name", "FinOps Test")
+    run_git("config", "user.email", "finops-test@example.invalid")
+
+    (repo / "README.md").write_text(
+        "baseline\n",
+        encoding="utf-8",
+    )
+    run_git("add", "README.md")
+    run_git("commit", "-m", "test: baseline")
+
+    monkeypatch.setenv("FINOPS_GIT_REPO", str(repo))
+    monkeypatch.setenv("FINOPS_OUTPUT_DIR", "artifacts")
+    monkeypatch.setenv(
+        "FINOPS_GIT_BRANCH_PREFIX",
+        "finops/optimization",
+    )
+
+    def fail_selected_git_command(args, **kwargs):
+        if (
+            len(args) >= 2
+            and args[0] == "git"
+            and args[1] == failed_command
+        ):
+            return subprocess.CompletedProcess(
+                args,
+                1,
+                stdout="",
+                stderr=f"simulated git {failed_command} failure",
+            )
+
+        return real_run(args, **kwargs)
+
+    monkeypatch.setattr(
+        agent_module.subprocess,
+        "run",
+        fail_selected_git_command,
+    )
+
+    result = agent_module.write_branch(
+        {
+            "run_id": f"failure-{failed_command}",
+            "approved": True,
+            "generated_hcl": "# test proposal\n",
+            "proposals": [],
+            "risk_summary": [],
+            "events": [],
+        }
+    )
+
+    assert result["status"] == "write_failed"
+    assert not (repo / "artifacts").exists()
+
+    current = real_run(
+        ["git", "branch", "--show-current"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert current.stdout.strip() == "main"
+
+    branches = real_run(
+        [
+            "git",
+            "branch",
+            "--list",
+            f"finops/optimization/failure-{failed_command}",
+        ],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert not branches.stdout.strip()
+
+    status = real_run(
+        ["git", "status", "--porcelain"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert not status.stdout.strip()
+
+
+def test_write_artifacts_creates_sha256_manifest(
+    tmp_path,
+) -> None:
+    _write_artifacts(
+        tmp_path,
+        {
+            "run_id": "manifest-test",
+            "proposals": [],
+            "risk_summary": [],
+            "generated_hcl": "# review only\n",
+            "events": [],
+        },
+    )
+
+    manifest_path = tmp_path / "manifest.json"
+    assert manifest_path.is_file()
+
+    manifest = json.loads(
+        manifest_path.read_text(encoding="utf-8")
+    )
+
+    assert manifest["run_id"] == "manifest-test"
+    assert manifest["algorithm"] == "sha256"
+
+    for filename, expected_hash in manifest["files"].items():
+        actual_hash = hashlib.sha256(
+            (tmp_path / filename).read_bytes()
+        ).hexdigest()
+
+        assert actual_hash == expected_hash
+
+    assert "manifest.json" not in manifest["files"]
+    assert "proposal.json" in manifest["files"]
+    assert "main.tf" in manifest["files"]
+    assert "audit.json" in manifest["files"]

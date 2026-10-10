@@ -1,8 +1,14 @@
 """Strict models, log redaction, and isolated HCL validation."""
-import os, re, shutil, subprocess, tempfile
+import os
+import re
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
+
 
 class StrictModel(BaseModel):
     """Reject unknown fields."""
@@ -30,6 +36,12 @@ class OptimizationProposal(StrictModel):
     action: Literal["rightsize", "review_only", "no_change"]
     rationale: str = Field(min_length=10, max_length=1200)
     estimated_monthly_savings_usd: float = Field(ge=0, le=100_000_000)
+    savings_basis: Literal[
+        "simulated_estimate",
+        "verified_monthly_cost_estimate",
+        "unavailable",
+        "not_applicable",
+    ] = "unavailable"
     risk: Literal["low", "medium", "high", "critical"]
     requires_human_approval: bool = True
     proposed_instance_type: str | None = None
@@ -59,7 +71,7 @@ def scrub_sensitive_text(value: object) -> str:
 def strip_markdown_fences(value: str) -> str:
     """Strip one outer HCL fence and reject nested fences."""
     text = value.strip()
-    match = re.fullmatch(r"```(?:hcl|terraform|tf)?\s*\n(.*?)\n```", text, re.S | re.I)
+    match = re.fullmatch(r"```(?:hcl|terraform|tf)?\s*\n(.*?)\n```", text, re.DOTALL | re.IGNORECASE)
     if match:
         text = match.group(1).strip()
     if "```" in text or "\x00" in text:
@@ -71,7 +83,7 @@ def validate_hcl_locally(generated_text: str, *, require_tflint: bool = False, t
     if not generated_text.strip() or len(generated_text) > 100_000:
         raise ValueError("HCL must be non-empty and at most 100 KB")
     hcl = strip_markdown_fences(generated_text)
-    if re.search(r"(?m)^\s*(?:#!|<\?|<script\b)", hcl, re.I):
+    if re.search(r"(?m)^\s*(?:#!|<\?|<script\b)", hcl, re.IGNORECASE):
         raise ValueError("Script markers rejected")
     terraform = shutil.which("terraform")
     if not terraform:
@@ -83,12 +95,12 @@ def validate_hcl_locally(generated_text: str, *, require_tflint: bool = False, t
         work = Path(temp)
         target = work / "main.tf"
         target.write_text(hcl, encoding="utf-8")
-        fmt = subprocess.run([terraform, "fmt", "-no-color", str(target)], cwd=work, capture_output=True, text=True, timeout=timeout_seconds, shell=False)
+        fmt = subprocess.run([terraform, "fmt", "-no-color", str(target)], check=False, cwd=work, capture_output=True, text=True, timeout=timeout_seconds, shell=False)
         if fmt.returncode:
             raise ValueError("terraform fmt failed: " + scrub_sensitive_text(fmt.stderr or fmt.stdout))
         formatted = target.read_text(encoding="utf-8")
         if tflint:
-            lint = subprocess.run([tflint, "--chdir", str(work), "--format", "compact"], cwd=work, capture_output=True, text=True, timeout=timeout_seconds, shell=False)
+            lint = subprocess.run([tflint, "--chdir", str(work), "--format", "compact"], check=False, cwd=work, capture_output=True, text=True, timeout=timeout_seconds, shell=False)
             if lint.returncode:
                 raise ValueError("tflint failed: " + scrub_sensitive_text(lint.stderr or lint.stdout))
         return formatted

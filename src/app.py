@@ -13,7 +13,7 @@ def main() -> int:
 
     try:
         result = finops_graph.invoke({"events": []})
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — report an unexpected top-level workflow failure safely.
         print("Run failed:", scrub_sensitive_text(exc))
         return 1
 

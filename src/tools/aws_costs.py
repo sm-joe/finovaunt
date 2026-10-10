@@ -1,7 +1,7 @@
 """Read-only AWS Cost Explorer billing summaries."""
 
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -144,7 +144,7 @@ def parse_cost_responses(
             )
 
         total_currency = next(iter(currencies))
-        total_amount = sum(grouped_amounts.values(), Decimal("0"))
+        total_amount = sum(grouped_amounts.values(), Decimal(0))
 
     return {
         "status": "available",
@@ -210,6 +210,212 @@ def collect_aws_cost_summary(
             break
 
     return parse_cost_responses(
+        responses,
+        period_start=period_start,
+        period_end_exclusive=period_end_exclusive,
+    )
+
+def _unavailable_resource_summary(
+    *,
+    period_start: str,
+    period_end_exclusive: str,
+    reason: str,
+) -> dict[str, Any]:
+    """Build a consistent unavailable resource-cost response."""
+    return {
+        "status": "unavailable",
+        "resource_type": "EC2",
+        "period_start": period_start,
+        "period_end_exclusive": period_end_exclusive,
+        "granularity": "DAILY",
+        "reason": reason,
+        "resources": [],
+        "resource_attribution": "not_available",
+    }
+
+
+def parse_ec2_resource_cost_responses(
+    responses: list[dict[str, Any]],
+    *,
+    period_start: str,
+    period_end_exclusive: str,
+) -> dict[str, Any]:
+    """Aggregate EC2 costs only when Cost Explorer provides resource IDs.
+
+    Costs are aggregated across daily results by resource ID, region, and
+    currency. Amounts in different currencies are never combined.
+
+    Groups without a usable resource ID are excluded from the resource list
+    and counted separately. The returned resource costs are not asserted to
+    represent the complete EC2 bill.
+    """
+    if not responses:
+        return _unavailable_resource_summary(
+            period_start=period_start,
+            period_end_exclusive=period_end_exclusive,
+            reason="Cost Explorer returned no resource-cost result pages.",
+        )
+
+    amounts: dict[tuple[str, str, str], Decimal] = defaultdict(Decimal)
+    unattributed_group_count = 0
+
+    for response in responses:
+        for result in response.get("ResultsByTime", []):
+            for group in result.get("Groups", []):
+                keys = group.get("Keys", [])
+
+                if len(keys) < 2:
+                    unattributed_group_count += 1
+                    continue
+
+                resource_id = str(keys[0]).strip()
+                region = str(keys[1]).strip()
+
+                if (
+                    not resource_id
+                    or resource_id.lower()
+                    in {"none", "null", "unknown", "noresourceid"}
+                ):
+                    unattributed_group_count += 1
+                    continue
+
+                metric = (
+                    group.get("Metrics", {})
+                    .get("UnblendedCost", {})
+                )
+
+                if not isinstance(metric, dict) or "Amount" not in metric:
+                    unattributed_group_count += 1
+                    continue
+
+                amount = _decimal_amount(metric["Amount"])
+                currency = str(metric.get("Unit", "unknown"))
+
+                amounts[(resource_id, region, currency)] += amount
+
+    if not amounts:
+        return _unavailable_resource_summary(
+            period_start=period_start,
+            period_end_exclusive=period_end_exclusive,
+            reason=(
+                "Cost Explorer returned no usable EC2 resource-level costs. "
+                "Resource-level billing may be disabled, delayed, or "
+                "unavailable for the requested period."
+            ),
+        )
+
+    resources = [
+        {
+            "resource_id": resource_id,
+            "region": region,
+            "amount": float(amount),
+            "currency": currency,
+        }
+        for (resource_id, region, currency), amount in amounts.items()
+    ]
+    resources.sort(
+        key=lambda item: (
+            item["currency"],
+            -item["amount"],
+            item["resource_id"],
+            item["region"],
+        )
+    )
+
+    return {
+        "status": "available",
+        "resource_type": "EC2",
+        "period_start": period_start,
+        "period_end_exclusive": period_end_exclusive,
+        "granularity": "DAILY",
+        "metric": "UnblendedCost",
+        "group_by": ["RESOURCE_ID", "REGION"],
+        "resources": resources,
+        "unattributed_group_count": unattributed_group_count,
+        "resource_attribution": (
+            "partial"
+            if unattributed_group_count
+            else "resource_id"
+        ),
+        "note": (
+            "Costs are aggregated only for returned EC2 resource IDs. "
+            "Unattributed groups are excluded, and this result is not "
+            "guaranteed to represent the complete EC2 bill or realized "
+            "savings. Cost Explorer data may be delayed."
+        ),
+    }
+
+
+def collect_ec2_resource_costs(
+    *,
+    session: Any = None,
+    today: date | None = None,
+) -> dict[str, Any]:
+    """Retrieve recent daily EC2 resource costs without modifying AWS.
+
+    Cost Explorer resource-level data is an opt-in feature with a limited
+    recent time window. This collector requests the previous 14 calendar
+    days, excluding today, and uses the caller's existing boto3 credentials.
+    """
+    today = today or date.today()
+    period_start = (today - timedelta(days=14)).isoformat()
+    period_end_exclusive = today.isoformat()
+
+    if session is None:
+        import boto3
+
+        session = boto3.Session()
+
+    try:
+        client = session.client("ce", region_name="us-east-1")
+        responses: list[dict[str, Any]] = []
+        next_page_token: str | None = None
+
+        while True:
+            request: dict[str, Any] = {
+                "TimePeriod": {
+                    "Start": period_start,
+                    "End": period_end_exclusive,
+                },
+                "Granularity": "DAILY",
+                "Metrics": ["UnblendedCost"],
+                "Filter": {
+                    "Dimensions": {
+                        "Key": "SERVICE",
+                        "Values": [
+                            "Amazon Elastic Compute Cloud - Compute"
+                        ],
+                    }
+                },
+                "GroupBy": [
+                    {"Type": "DIMENSION", "Key": "RESOURCE_ID"},
+                    {"Type": "DIMENSION", "Key": "REGION"},
+                ],
+            }
+
+            if next_page_token:
+                request["NextPageToken"] = next_page_token
+
+            response = client.get_cost_and_usage_with_resources(
+                **request
+            )
+            responses.append(response)
+
+            next_page_token = response.get("NextPageToken")
+            if not next_page_token:
+                break
+
+    except Exception as exc:  # noqa: BLE001 — return unavailable attribution on unexpected collector failures.
+        return _unavailable_resource_summary(
+            period_start=period_start,
+            period_end_exclusive=period_end_exclusive,
+            reason=(
+                "EC2 resource-cost collection failed: "
+                f"{type(exc).__name__}: {exc}"
+            ),
+        )
+
+    return parse_ec2_resource_cost_responses(
         responses,
         period_start=period_start,
         period_end_exclusive=period_end_exclusive,

@@ -1,4 +1,9 @@
-from src.utils.guardrails import ResourceMetric, scrub_sensitive_text, strip_markdown_fences
+from src.utils.guardrails import (
+    ResourceMetric,
+    scrub_sensitive_text,
+    strip_markdown_fences,
+)
+
 
 def test_invalid_cpu_rejected():
     try:
