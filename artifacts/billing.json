@@ -1,0 +1,5 @@
+{
+  "status": "not_applicable",
+  "reason": "Billing collection is enabled only in AWS discovery mode.",
+  "resource_attribution": "not_available"
+}

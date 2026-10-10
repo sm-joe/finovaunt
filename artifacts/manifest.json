@@ -1,0 +1,10 @@
+{
+  "run_id": "54a752820f3c",
+  "algorithm": "sha256",
+  "files": {
+    "audit.json": "a6eed8732180a389f1e0e8da0ecae74844748165a7bbc6923fed890d63377820",
+    "billing.json": "0a7bebc0109cdd9a2763da1ecb8e987fe68d9b8c6e42a5993379e40a5ad2b2f2",
+    "main.tf": "6b637d7f5f553264cdfba94617baa7de095ad51fdda6d95e2280bcc18503b2a8",
+    "proposal.json": "ef0e488c70bd93a78eeade91571ba488ab2f4d281a52bc094f22fa85707a9a11"
+  }
+}
