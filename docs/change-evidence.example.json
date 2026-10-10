@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "change_id": "CHG-REPLACE-WITH-REAL-ID",
+  "approval": {
+    "status": "approved",
+    "approved_at": "2026-09-15T12:00:00Z",
+    "approved_by": "REPLACE-WITH-APPROVER-IDENTIFIER"
+  },
+  "deployment": {
+    "status": "applied",
+    "deployed_at": "2026-09-16T00:00:00Z",
+    "evidence_ref": "REPLACE-WITH-TERRAFORM-RUN-URL-OR-RUN-ID"
+  },
+  "resources": [
+    {
+      "provider": "aws",
+      "region": "eu-central-1",
+      "resource_id": "REPLACE-WITH-EXACT-RESOURCE-ID"
+    }
+  ]
+}

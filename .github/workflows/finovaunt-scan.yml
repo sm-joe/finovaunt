@@ -1,0 +1,106 @@
+name: Finovaunt read-only cost scan
+
+on:
+  workflow_dispatch:
+    inputs:
+      discovery_mode:
+        description: Data source for this scan
+        type: choice
+        required: true
+        default: aws
+        options:
+          - aws
+          - mock
+  schedule:
+    - cron: "30 3 * * *"
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+concurrency:
+  group: finovaunt-scan-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    name: Read-only FinOps scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FINOPS_DISCOVERY_MODE: ${{ github.event.inputs.discovery_mode || 'aws' }}
+      FINOPS_AWS_REGION: eu-central-1
+      FINOPS_AWS_LOOKBACK_DAYS: "14"
+      FINOPS_AWS_MAX_RESOURCES: "100"
+      FINOPS_OUTPUT_DIR: artifacts-live
+      FINOPS_REQUIRE_TFLINT: "false"
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install project dependencies
+        run: uv sync --dev
+
+      - name: Restore prior history from latest successful scan artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts-live previous-scan
+          previous_run_id="$(gh run list \
+            --workflow finovaunt-scan.yml \
+            --branch "$GITHUB_REF_NAME" \
+            --status success \
+            --limit 10 \
+            --json databaseId \
+            --jq '.[0].databaseId // empty')"
+          if [[ -n "$previous_run_id" && "$previous_run_id" != "$GITHUB_RUN_ID" ]]; then
+            if gh run download "$previous_run_id" --name finovaunt-scan --dir previous-scan; then
+              if [[ -f previous-scan/cost_history.json ]]; then
+                cp previous-scan/cost_history.json artifacts-live/cost_history.json
+                echo "Restored cost history from run $previous_run_id"
+              else
+                echo "Previous artifact has no cost_history.json; starting a new history."
+              fi
+            else
+              echo "Previous scan artifact could not be downloaded; starting a new history."
+            fi
+          else
+            echo "No previous successful scan run found; starting a new history."
+          fi
+
+      - name: Configure AWS credentials through GitHub OIDC
+        if: ${{ (github.event.inputs.discovery_mode || 'aws') == 'aws' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.FINOPS_AWS_ROLE_ARN }}
+          aws-region: ${{ env.FINOPS_AWS_REGION }}
+          role-session-name: FinovauntReadOnlyScan
+
+      - name: Verify AWS identity
+        if: ${{ (github.event.inputs.discovery_mode || 'aws') == 'aws' }}
+        run: aws sts get-caller-identity
+
+      - name: Run read-only scan
+        run: uv run python scripts/run_readonly_scan.py
+
+      - name: Upload scan evidence
+        if: ${{ always() && hashFiles('artifacts-live/**') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: finovaunt-scan
+          path: artifacts-live/
+          if-no-files-found: error
+          retention-days: 30
