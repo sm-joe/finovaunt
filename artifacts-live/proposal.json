@@ -1,0 +1,20 @@
+{
+  "run_id": "43d5e820e88d",
+  "proposals": [
+    {
+      "resource_id": "aws:ec2:eu-central-1:i-02dd62b24cadeccce",
+      "provider": "aws",
+      "action": "no_change",
+      "rationale": "Peak CPU is 46.7%. The conservative policy blocks automated rightsizing.",
+      "estimated_monthly_savings_usd": 0.0,
+      "savings_basis": "not_applicable",
+      "risk": "critical",
+      "requires_human_approval": true,
+      "proposed_instance_type": null
+    }
+  ],
+  "risk_summary": [
+    "aws:ec2:eu-central-1:i-02dd62b24cadeccce: production requires review",
+    "aws:ec2:eu-central-1:i-02dd62b24cadeccce: critical risk"
+  ]
+}
