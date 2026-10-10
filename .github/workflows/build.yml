@@ -2,7 +2,6 @@ name: Finovaunt Docker Build Pipeline
 
 on:
   push:
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -23,12 +22,14 @@ jobs:
     uses: ./.github/workflows/security.yml
 
   build-api:
-    name: Build API Image
+    name: Build and Publish API Image
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs:
-      - ci
-      - security
+    needs: security
+
+    permissions:
+      contents: read
+      packages: write
 
     if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
 
@@ -39,25 +40,39 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Build API Image (do not publish)
+      - name: Normalize Image Owner
+        id: image
+        shell: bash
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Publish API Image
         uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile
-          push: false
-          load: true
-          tags: finovaunt-api:${{ github.sha }}
-
-      - name: Confirm API Image Exists
-        run: docker image inspect "finovaunt-api:${GITHUB_SHA}" > /dev/null
+          push: true
+          tags: |
+            ghcr.io/${{ steps.image.outputs.owner }}/finovaunt-api:${{ github.sha }}
+            ghcr.io/${{ steps.image.outputs.owner }}/finovaunt-api:latest
+          cache-from: type=gha,scope=finovaunt-api
+          cache-to: type=gha,mode=max,scope=finovaunt-api
 
   build-frontend:
-    name: Build Dashboard Image
+    name: Build and Publish Dashboard Image
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs:
-      - ci
-      - security
+    needs: security
+
+    permissions:
+      contents: read
+      packages: write
 
     if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
 
@@ -68,14 +83,26 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Build Dashboard Image (do not publish)
+      - name: Normalize image owner
+        id: image
+        shell: bash
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Publish Dashboard Image
         uses: docker/build-push-action@v7
         with:
           context: ./frontend
           file: ./frontend/Dockerfile
-          push: false
-          load: true
-          tags: finovaunt-dashboard:${{ github.sha }}
-
-      - name: Confirm Dashboard Image Exists
-        run: docker image inspect "finovaunt-dashboard:${GITHUB_SHA}" > /dev/null
+          push: true
+          tags: |
+            ghcr.io/${{ steps.image.outputs.owner }}/finovaunt-dashboard:${{ github.sha }}
+            ghcr.io/${{ steps.image.outputs.owner }}/finovaunt-dashboard:latest
+          cache-from: type=gha,scope=finovaunt-dashboard
+          cache-to: type=gha,mode=max,scope=finovaunt-dashboard
