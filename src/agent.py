@@ -41,6 +41,7 @@ class AgentState(TypedDict, total=False):
     proposals: list[dict[str, Any]]
     generated_hcl: str
     validation_error: str
+    collection_warnings: list[str]
     risk_summary: list[str]
     billing_summary: dict[str, Any]
     approved: bool
@@ -80,7 +81,10 @@ def _attach_ec2_resource_costs(
             indexed.setdefault((resource_id, region), []).append(item)
 
     for metric in metrics:
-        if metric.provider != "aws" or metric.resource_type != "compute":
+        if (
+            getattr(metric, "provider", None) != "aws"
+            or getattr(metric, "resource_type", None) != "compute"
+        ):
             continue
         parts = metric.resource_id.split(":", 3)
         if len(parts) != 4 or parts[0] != "aws" or parts[1] != "ec2":
@@ -145,6 +149,7 @@ def collect_data(state: AgentState) -> AgentState:
             return {
                 "run_id": run_id,
                 "metrics": [],
+                "collection_warnings": [scrub_sensitive_text(str(exc))],
                 "validation_error": (
                     "AWS metrics collection failed: "
                     + scrub_sensitive_text(str(exc))
@@ -233,6 +238,7 @@ def collect_data(state: AgentState) -> AgentState:
                 "telemetry. Optimization and artifact writing were blocked."
             ),
             "billing_summary": billing_summary,
+            "collection_warnings": [scrub_sensitive_text(warning) for warning in warnings],
             "events": events,
             "status": "collection_failed",
         }
@@ -249,6 +255,7 @@ def collect_data(state: AgentState) -> AgentState:
             metric.model_dump(mode="json")
             for metric in metrics
         ],
+        "collection_warnings": [scrub_sensitive_text(warning) for warning in warnings],
         "billing_summary": billing_summary,
         "events": events,
         "status": "data_collected",
@@ -285,8 +292,38 @@ def optimize(state: AgentState) -> AgentState:
             telemetry_hours = float(metric.metadata.get("telemetry_window_hours", "0"))
         except (TypeError, ValueError):
             telemetry_hours = 0
+
+        if telemetry_hours <= 0:
+            try:
+                usable_datapoints = int(
+                    metric.metadata.get("telemetry_datapoints_usable", "0"))
+                period_seconds = int(
+                    metric.metadata.get("telemetry_period_seconds", "3600"))
+                if usable_datapoints >= 0 and period_seconds > 0:
+                    telemetry_hours = (
+                        usable_datapoints * period_seconds / 3600 )
+
+            except (TypeError, ValueError):
+                 telemetry_hours = 0
+
         if telemetry_hours < 168:
-            evidence_gaps.append("at least 7 days of utilization history")
+            evidence_gaps.append(
+                "at least 7 days of usable utilization datapoints")
+
+        if "telemetry_datapoints_usable" in metric.metadata:
+            try:
+                telemetry_coverage = float(
+                    metric.metadata.get("telemetry_coverage_percent", "-1")
+                )
+
+            except (TypeError, ValueError):
+                telemetry_coverage = -1
+
+            if telemetry_coverage < 70:
+                 evidence_gaps.append(
+                    "at least 70% valid CloudWatch CPU datapoint coverage"
+                 )
+            
 
         workload_stability = metric.metadata.get("workload_stability", "").strip().lower()
         if workload_stability not in {"stable", "steady"}:

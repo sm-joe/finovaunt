@@ -120,6 +120,22 @@ def _resource_rows(artifacts: Mapping[str, Any]) -> list[dict[str, Any]]:
                 "peak_cpu_percent": _number(utilization.get("peak_cpu_percent")),
                 "avg_memory_percent": _number(utilization.get("avg_memory_percent")),
             },
+            "telemetry": {
+                "status": _text(_mapping(raw.get("telemetry_evidence")).get("status"), "unknown"),
+                "source": _text(_mapping(raw.get("telemetry_evidence")).get("source"), "unknown"),
+                "metric": _text(_mapping(raw.get("telemetry_evidence")).get("metric"), "unknown"),
+                "period_seconds": _number(_mapping(raw.get("telemetry_evidence")).get("period_seconds")),
+                "lookback_days": _number(_mapping(raw.get("telemetry_evidence")).get("lookback_days")),
+                "datapoints_returned": _number(_mapping(raw.get("telemetry_evidence")).get("datapoints_returned")),
+                "datapoints_usable": _number(_mapping(raw.get("telemetry_evidence")).get("datapoints_usable")),
+                "datapoints_expected": _number(_mapping(raw.get("telemetry_evidence")).get("datapoints_expected")),
+                "coverage_percent": _number(_mapping(raw.get("telemetry_evidence")).get("coverage_percent")),
+                "first_datapoint_at": _mapping(raw.get("telemetry_evidence")).get("first_datapoint_at"),
+                "latest_datapoint_at": _mapping(raw.get("telemetry_evidence")).get("latest_datapoint_at"),
+                "window_start": _mapping(raw.get("telemetry_evidence")).get("window_start"),
+                "window_end": _mapping(raw.get("telemetry_evidence")).get("window_end"),
+                "warnings": _list(_mapping(raw.get("telemetry_evidence")).get("warnings")),
+            },
             "cost": {
                 "status": _text(cost.get("status"), "cost_unavailable"),
                 "amount": _number(cost.get("amount")),
@@ -186,12 +202,49 @@ def build_overview(artifacts: Mapping[str, Any]) -> dict[str, Any]:
 
     total = len(rows)
     latest_run_id = _text(evidence.get("run_id")) or _text(history.get("latest_run_id")) or None
+    provenance = _mapping(evidence.get("scan_provenance"))
+    telemetry_status_counts = _mapping(provenance.get("telemetry_status_counts"))
+    telemetry_rows = [row["telemetry"] for row in rows]
+    latest_datapoints = [
+        _text(item.get("latest_datapoint_at")) for item in telemetry_rows
+        if _text(item.get("latest_datapoint_at"))
+    ]
+    coverage_values = [
+        item["coverage_percent"] for item in telemetry_rows
+        if item.get("coverage_percent") is not None
+    ]
+    discovery_modes = _list(provenance.get("discovery_modes"))
+    if discovery_modes:
+        if discovery_modes == ["mock"]:
+            data_source = "mock"
+        elif discovery_modes == ["aws-live"]:
+            data_source = "aws_live"
+        else:
+            data_source = "mixed"
+    elif any(row["savings"]["classification"] == "simulated_estimate" for row in rows):
+        data_source = "mock"
+    else:
+        data_source = "live_or_unknown"
+
     return {
         "generated_at": _text(evidence.get("generated_at")) or None,
         "run_id": latest_run_id,
-        "data_source": "mock" if any(
-            row["savings"]["classification"] == "simulated_estimate" for row in rows
-        ) else "live_or_unknown",
+        "data_source": data_source,
+        "scan_provenance": {
+            "discovery_modes": _list(provenance.get("discovery_modes")),
+            "providers": _list(provenance.get("providers")),
+            "regions": _list(provenance.get("regions")),
+            "collection_warnings": _list(provenance.get("collection_warnings")),
+            "coverage_scope": _text(provenance.get("coverage_scope"), "not_recorded"),
+        },
+        "telemetry_coverage": {
+            "resource_count_in_artifact": len(rows),
+            "resources_with_recorded_coverage": len(coverage_values),
+            "status_counts": dict(telemetry_status_counts),
+            "average_datapoint_coverage_percent": round(sum(coverage_values) / len(coverage_values), 2) if coverage_values else None,
+            "latest_datapoint_at": max(latest_datapoints) if latest_datapoints else None,
+            "scope": _text(provenance.get("coverage_scope"), "Resources in current evidence artifact only; not the full discovered inventory."),
+        },
         "currency": "USD",
         "cloud_spend": {
             "status": _text(account.get("status"), "not_collected"),
@@ -265,19 +318,61 @@ def build_scans(artifacts: Mapping[str, Any]) -> dict[str, Any]:
                 continue
             action = _text(_mapping(resource.get("recommendation")).get("action"), "not_proposed")
             actions[action] = actions.get(action, 0) + 1
+        telemetry_rows = [
+            _mapping(resource.get("telemetry")) for resource in resources
+            if isinstance(resource, Mapping)
+        ]
+        coverage_values = [
+            value for value in (_number(item.get("coverage_percent")) for item in telemetry_rows)
+            if value is not None
+        ]
+        latest_values = [
+            _text(item.get("latest_datapoint_at")) for item in telemetry_rows
+            if _text(item.get("latest_datapoint_at"))
+        ]
+        telemetry_status_counts: dict[str, int] = {}
+        for item in telemetry_rows:
+            status = _text(item.get("status"), "unknown")
+            telemetry_status_counts[status] = telemetry_status_counts.get(status, 0) + 1
         scans.append({
             "run_id": _text(run.get("run_id"), "unknown"),
             "generated_at": _text(run.get("generated_at")) or None,
             "resource_count": int(_number(run.get("resource_count")) or len(resources)),
             "action_counts": actions,
+            "scan_provenance": _mapping(run.get("scan_provenance")),
+            "telemetry_coverage": {
+                "status_counts": telemetry_status_counts,
+                "average_datapoint_coverage_percent": round(sum(coverage_values) / len(coverage_values), 2) if coverage_values else None,
+                "latest_datapoint_at": max(latest_values) if latest_values else None,
+            },
             "realized_savings": {"status": "not_verified", "amount_usd": None},
         })
     if not scans and evidence:
+        evidence_resources = [
+            _mapping(item) for item in _list(evidence.get("resources"))
+        ]
+        evidence_telemetry = [
+            _mapping(item.get("telemetry_evidence")) for item in evidence_resources
+        ]
+        evidence_coverage = [
+            value for value in (_number(item.get("coverage_percent")) for item in evidence_telemetry)
+            if value is not None
+        ]
+        evidence_latest = [
+            _text(item.get("latest_datapoint_at")) for item in evidence_telemetry
+            if _text(item.get("latest_datapoint_at"))
+        ]
         scans.append({
             "run_id": _text(evidence.get("run_id"), "unknown"),
             "generated_at": _text(evidence.get("generated_at")) or None,
-            "resource_count": len(_list(evidence.get("resources"))),
+            "resource_count": len(evidence_resources),
             "action_counts": {},
+            "scan_provenance": _mapping(evidence.get("scan_provenance")),
+            "telemetry_coverage": {
+                "status_counts": dict(_mapping(_mapping(evidence.get("scan_provenance")).get("telemetry_status_counts"))),
+                "average_datapoint_coverage_percent": round(sum(evidence_coverage) / len(evidence_coverage), 2) if evidence_coverage else None,
+                "latest_datapoint_at": max(evidence_latest) if evidence_latest else None,
+            },
             "realized_savings": {"status": "not_verified", "amount_usd": None},
         })
     scans.sort(key=lambda item: item.get("generated_at") or "")
@@ -297,6 +392,7 @@ def build_scan_detail(artifacts: Mapping[str, Any], run_id: str) -> dict[str, An
             "resource_count": len(_list(evidence.get("resources"))),
             "resources": _list(evidence.get("resources")),
             "account_billing_context": evidence.get("account_billing_context", {}),
+            "scan_provenance": evidence.get("scan_provenance", {}),
             "realized_savings_verified": False,
         }
     return None
