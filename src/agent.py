@@ -29,6 +29,10 @@ from src.utils.guardrails import (
 )
 
 
+from src.utils.cost_evidence import build_cost_evidence_report
+
+from src.utils.proposal_history import build_proposal_history
+
 class AgentState(TypedDict, total=False):
     """Serializable workflow state. Never store credentials here."""
 
@@ -537,8 +541,13 @@ def _write_artifacts(directory: Path, state: AgentState) -> None:
         "risk_summary": state.get("risk_summary", []),
     }
 
+    evidence_report = build_cost_evidence_report(state)
+    audit_events = [
+        *state.get("events", []),
+        f"Cost evidence report generated for {evidence_report['summary']['resource_count']} resources",
+    ]
     audit_document = {
-        "events": state.get("events", []),
+        "events": audit_events,
     }
 
     (directory / "proposal.json").write_text(
@@ -567,6 +576,26 @@ def _write_artifacts(directory: Path, state: AgentState) -> None:
             ),
             indent=2,
         ) + "\n",
+        encoding="utf-8",
+    )
+
+    (directory / "cost_evidence.json").write_text(
+        json.dumps(evidence_report, indent=2, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
+
+    history_path = directory / "cost_history.json"
+    previous_history = None
+    if history_path.is_file():
+        try:
+            previous_history = json.loads(history_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            # Never silently append to a corrupt history file; fail the artifact
+            # write so the caller's existing rollback protection can restore it.
+            raise RuntimeError("Existing cost_history.json is unreadable; refusing to overwrite it")
+    history_document = build_proposal_history(evidence_report, previous_history)
+    history_path.write_text(
+        json.dumps(history_document, indent=2, allow_nan=False) + "\n",
         encoding="utf-8",
     )
 

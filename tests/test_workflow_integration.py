@@ -132,6 +132,8 @@ def test_full_workflow_approval_writes_auditable_artifacts_and_local_commit(
     assert set(manifest["files"]) == {
         "audit.json",
         "billing.json",
+        "cost_evidence.json",
+        "cost_history.json",
         "main.tf",
         "proposal.json",
     }
@@ -144,6 +146,18 @@ def test_full_workflow_approval_writes_auditable_artifacts_and_local_commit(
     assert len(proposals) == 1
     assert proposals[0]["savings_basis"] == "simulated_estimate"
     assert proposals[0]["estimated_monthly_savings_usd"] == 30
+    history = json.loads(
+        (artifacts / "cost_history.json").read_text(encoding="utf-8")
+    )
+    assert history["latest_run_id"] == "workflow-integration"
+    assert history["run_count"] == 1
+    assert history["runs"][-1]["resources"][0]["savings"]["realized_savings_status"] == "not_verified"
+    evidence = json.loads(
+        (artifacts / "cost_evidence.json").read_text(encoding="utf-8")
+    )
+    assert evidence["summary"]["resource_count"] == 1
+    assert evidence["resources"][0]["savings_evidence"]["classification"] == "simulated_estimate"
+    assert evidence["resources"][0]["savings_evidence"]["realized_savings"]["status"] == "not_verified"
     assert "requires-human-review" in (artifacts / "main.tf").read_text(
         encoding="utf-8"
     )

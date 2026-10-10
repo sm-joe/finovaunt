@@ -134,6 +134,8 @@ def test_manifest_hashes_every_artifact_except_manifest_itself(
     assert set(manifest["files"]) == {
         "audit.json",
         "billing.json",
+        "cost_evidence.json",
+        "cost_history.json",
         "main.tf",
         "proposal.json",
     }
