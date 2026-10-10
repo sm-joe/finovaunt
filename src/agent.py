@@ -1,4 +1,3 @@
-
 """LangGraph FinOps workflow: collect, optimize, assess, approve, branch."""
 
 import json
@@ -11,6 +10,7 @@ from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
+from src.tools.aws_costs import collect_aws_cost_summary
 from src.tools.cloud_metrics import (
     collect_aws_metrics,
     collect_mock_metrics,
@@ -32,6 +32,7 @@ class AgentState(TypedDict, total=False):
     generated_hcl: str
     validation_error: str
     risk_summary: list[str]
+    billing_summary: dict[str, Any]
     approved: bool
     approval_reason: str
     output_path: str
@@ -41,7 +42,6 @@ class AgentState(TypedDict, total=False):
 
 
 def _event(state: AgentState, message: str) -> list[str]:
-    """Append a sanitized event to the workflow history."""
     return [
         *state.get("events", []),
         scrub_sensitive_text(message),
@@ -49,9 +49,15 @@ def _event(state: AgentState, message: str) -> list[str]:
 
 
 def collect_data(state: AgentState) -> AgentState:
-    """Collect mock or live AWS metrics according to configuration."""
+    """Collect mock or live AWS metrics and a separate billing summary."""
     run_id = state.get("run_id") or uuid.uuid4().hex[:12]
     mode = os.getenv("FINOPS_DISCOVERY_MODE", "mock").strip().lower()
+
+    billing_summary: dict[str, Any] = {
+        "status": "not_applicable",
+        "reason": "Billing collection is enabled only in AWS discovery mode.",
+        "resource_attribution": "not_available",
+    }
 
     if mode == "mock":
         metrics = collect_mock_metrics()
@@ -61,20 +67,38 @@ def collect_data(state: AgentState) -> AgentState:
         try:
             metrics, warnings = collect_aws_metrics()
         except Exception as exc:
-            # Fail closed: collection errors must not reach optimization.
-            safe_error = scrub_sensitive_text(str(exc))
             return {
                 "run_id": run_id,
                 "metrics": [],
                 "validation_error": (
-                    f"AWS collection failed: {safe_error}"
+                    "AWS metrics collection failed: "
+                    + scrub_sensitive_text(str(exc))
                 ),
+                "billing_summary": {
+                    "status": "not_attempted",
+                    "resource_attribution": "not_available",
+                },
                 "events": _event(
                     state,
-                    "AWS collection failed; optimization blocked",
+                    "AWS metrics collection failed; optimization blocked",
                 ),
                 "status": "collection_failed",
             }
+
+        # Billing is a separate data source. A billing failure must not be
+        # misrepresented as a zero cost or as a failed CPU collection.
+        try:
+            billing_summary = collect_aws_cost_summary()
+        except Exception as exc:
+            billing_summary = {
+                "status": "unavailable",
+                "reason": scrub_sensitive_text(str(exc)),
+                "resource_attribution": "not_available",
+            }
+            warnings.append(
+                "AWS billing data unavailable; resource costs and savings "
+                "will not be inferred from account-level billing."
+            )
 
     else:
         return {
@@ -100,7 +124,6 @@ def collect_data(state: AgentState) -> AgentState:
         for warning in warnings
     )
 
-    # Do not produce recommendations from an empty live scan.
     if mode == "aws" and not metrics:
         return {
             "run_id": run_id,
@@ -109,9 +132,16 @@ def collect_data(state: AgentState) -> AgentState:
                 "AWS discovery returned no resources with usable CPU "
                 "telemetry. Optimization and artifact writing were blocked."
             ),
+            "billing_summary": billing_summary,
             "events": events,
             "status": "collection_failed",
         }
+
+    events.append(
+        scrub_sensitive_text(
+            f"Billing summary status: {billing_summary.get('status', 'unknown')}"
+        )
+    )
 
     return {
         "run_id": run_id,
@@ -119,13 +149,14 @@ def collect_data(state: AgentState) -> AgentState:
             metric.model_dump(mode="json")
             for metric in metrics
         ],
+        "billing_summary": billing_summary,
         "events": events,
         "status": "data_collected",
     }
 
 
 def optimize(state: AgentState) -> AgentState:
-    """Generate conservative, deterministic optimization proposals."""
+    """Generate conservative proposals without inventing live savings."""
     proposals: list[dict[str, Any]] = []
 
     for raw_metric in state.get("metrics", []):
@@ -140,8 +171,6 @@ def optimize(state: AgentState) -> AgentState:
         )
 
         if eligible and metric.monthly_cost_usd <= 0:
-            # Live discovery currently has no billing integration.
-            # Never manufacture a dollar savings estimate.
             proposal = OptimizationProposal(
                 resource_id=metric.resource_id,
                 provider=metric.provider,
@@ -149,16 +178,15 @@ def optimize(state: AgentState) -> AgentState:
                 rationale=(
                     f"Non-production compute averages "
                     f"{metric.avg_cpu_percent:.1f}% CPU and peaks at "
-                    f"{metric.peak_cpu_percent:.1f}%. Billing data is "
-                    "unavailable, so savings cannot be estimated. "
-                    "Review utilization and actual costs before resizing."
+                    f"{metric.peak_cpu_percent:.1f}%. No verified "
+                    "resource-level cost is available, so savings cannot "
+                    "be estimated safely."
                 ),
                 estimated_monthly_savings_usd=0,
                 risk="medium",
             )
 
         elif eligible:
-            # This estimate is only as reliable as the supplied cost data.
             proposal = OptimizationProposal(
                 resource_id=metric.resource_id,
                 provider=metric.provider,
@@ -167,7 +195,7 @@ def optimize(state: AgentState) -> AgentState:
                     f"Non-production compute averages "
                     f"{metric.avg_cpu_percent:.1f}% CPU and peaks at "
                     f"{metric.peak_cpu_percent:.1f}%. Review a one-step "
-                    "reduction after checking workload requirements."
+                    "reduction after verifying workload requirements."
                 ),
                 estimated_monthly_savings_usd=round(
                     metric.monthly_cost_usd * 0.30,
@@ -184,7 +212,6 @@ def optimize(state: AgentState) -> AgentState:
                 metric.peak_cpu_percent >= 80
                 or metric.production_critical
             )
-
             proposal = OptimizationProposal(
                 resource_id=metric.resource_id,
                 provider=metric.provider,
@@ -197,10 +224,8 @@ def optimize(state: AgentState) -> AgentState:
                 risk="critical" if hot else "high",
             )
 
-        # Important: persist every proposal in the workflow state.
         proposals.append(proposal.model_dump(mode="json"))
 
-    # Valid Terraform metadata only; this does not change cloud resources.
     generated_hcl = """# Proposal metadata only; no cloud changes.
 terraform {
   required_version = ">= 1.5.0"
@@ -229,10 +254,9 @@ output "finops_review" {
 def assess_risk(state: AgentState) -> AgentState:
     """Assess production risks and validate generated Terraform locally."""
     risks: list[str] = []
-
     metrics = {
-        raw_metric["resource_id"]: ResourceMetric.model_validate(raw_metric)
-        for raw_metric in state.get("metrics", [])
+        item["resource_id"]: ResourceMetric.model_validate(item)
+        for item in state.get("metrics", [])
     }
 
     for raw_proposal in state.get("proposals", []):
@@ -242,8 +266,8 @@ def assess_risk(state: AgentState) -> AgentState:
         if metric is None:
             return {
                 "validation_error": (
-                    "A proposal references a resource absent from the "
-                    "collected metrics; artifact writing was blocked."
+                    "A proposal references an unknown resource; "
+                    "artifact writing was blocked."
                 ),
                 "risk_summary": risks,
                 "events": _event(
@@ -293,7 +317,6 @@ def assess_risk(state: AgentState) -> AgentState:
 
 
 def route_assessment(state: AgentState) -> str:
-    """Route failed validation directly to the rejection node."""
     return (
         "reject"
         if state.get("validation_error")
@@ -302,7 +325,6 @@ def route_assessment(state: AgentState) -> str:
 
 
 def route_collection(state: AgentState) -> str:
-    """Do not optimize when collection has failed."""
     return (
         "reject"
         if state.get("validation_error")
@@ -324,17 +346,30 @@ def approval(state: AgentState) -> AgentState:
         f"estimated savings ${total_savings:.2f}/month"
     )
 
+    billing = state.get("billing_summary", {})
+    if billing.get("status") == "available":
+        print(
+            "AWS observed account cost for "
+            f"{billing['period_start']} to "
+            f"{billing['period_end_exclusive']} (exclusive): "
+            f"{billing['currency']} {billing['total_cost']:.2f}"
+        )
+        print(
+            "Note: account-level cost is not individual resource cost "
+            "or realized savings."
+        )
+    elif billing.get("status") == "unavailable":
+        print("AWS billing summary unavailable; see billing.json.")
+
     for proposal in state.get("proposals", []):
         print(
-            f"- {proposal['provider']} "
-            f"{proposal['resource_id']}: "
-            f"{proposal['action']} "
-            f"({proposal['risk']}; "
+            f"- {proposal['provider']} {proposal['resource_id']}: "
+            f"{proposal['action']} ({proposal['risk']}; "
             f"${proposal['estimated_monthly_savings_usd']:.2f}/mo)"
         )
 
     for risk in state.get("risk_summary", []):
-        print(f"REVIEW: {risk}")
+        print("REVIEW:", risk)
 
     try:
         answer = input(
@@ -356,12 +391,11 @@ def approval(state: AgentState) -> AgentState:
 
 
 def route_approval(state: AgentState) -> str:
-    """Only an explicit approval can reach the artifact writer."""
     return "write" if state.get("approved") else "reject"
 
 
 def _write_artifacts(directory: Path, state: AgentState) -> None:
-    """Write the proposal, Terraform metadata, and audit trail."""
+    """Write proposals, HCL, audit trail, and separate billing data."""
     directory.mkdir(parents=True, exist_ok=True)
 
     proposal_document = {
@@ -389,13 +423,26 @@ def _write_artifacts(directory: Path, state: AgentState) -> None:
         encoding="utf-8",
     )
 
+    (directory / "billing.json").write_text(
+        json.dumps(
+            state.get(
+                "billing_summary",
+                {
+                    "status": "not_collected",
+                    "resource_attribution": "not_available",
+                },
+            ),
+            indent=2,
+        ) + "\n",
+        encoding="utf-8",
+    )
+
 
 def write_branch(state: AgentState) -> AgentState:
     """Write artifacts and commit locally; never push or mutate cloud resources."""
     repo = Path(os.getenv("FINOPS_GIT_REPO", ".")).resolve()
     output_name = os.getenv("FINOPS_OUTPUT_DIR", "artifacts")
 
-    # Keep artifacts at a simple path within the repository.
     if not re.fullmatch(r"[A-Za-z0-9_-]+", output_name):
         return {
             "status": "write_blocked",
@@ -424,7 +471,6 @@ def write_branch(state: AgentState) -> AgentState:
     if not (repo / ".git").exists():
         output_path = Path(output_name).resolve()
         _write_artifacts(output_path, state)
-
         return {
             "output_path": str(output_path),
             "status": "artifacts_written",
@@ -434,9 +480,8 @@ def write_branch(state: AgentState) -> AgentState:
             ),
         }
 
-    dirty_result = git("status", "--porcelain")
-
-    if dirty_result.returncode != 0 or dirty_result.stdout.strip():
+    dirty = git("status", "--porcelain")
+    if dirty.returncode != 0 or dirty.stdout.strip():
         return {
             "status": "write_blocked",
             "events": _event(
@@ -457,14 +502,10 @@ def write_branch(state: AgentState) -> AgentState:
     if not prefix:
         return {
             "status": "write_blocked",
-            "events": _event(
-                state,
-                "Invalid Git branch prefix",
-            ),
+            "events": _event(state, "Invalid Git branch prefix"),
         }
 
     branch = f"{prefix}/{state['run_id']}"
-
     current_branch = git("branch", "--show-current")
 
     if current_branch.returncode != 0 or not current_branch.stdout.strip():
@@ -476,15 +517,10 @@ def write_branch(state: AgentState) -> AgentState:
             ),
         }
 
-    switch_result = git("switch", "-c", branch)
-
-    if switch_result.returncode != 0:
+    if git("switch", "-c", branch).returncode != 0:
         return {
             "status": "write_blocked",
-            "events": _event(
-                state,
-                "Branch creation failed",
-            ),
+            "events": _event(state, "Branch creation failed"),
         }
 
     output_path = repo / output_name
@@ -501,9 +537,7 @@ def write_branch(state: AgentState) -> AgentState:
             ),
         }
 
-    add_result = git("add", "--", output_name)
-
-    if add_result.returncode != 0:
+    if git("add", "--", output_name).returncode != 0:
         return {
             "status": "write_blocked",
             "git_branch": branch,
@@ -526,14 +560,14 @@ def write_branch(state: AgentState) -> AgentState:
         "GIT_COMMITTER_EMAIL": author_email,
     }
 
-    commit_result = git(
+    commit = git(
         "commit",
         "-m",
         f"chore(finops): proposal {state['run_id']}",
         env=commit_env,
     )
 
-    if commit_result.returncode != 0:
+    if commit.returncode != 0:
         return {
             "status": "write_blocked",
             "git_branch": branch,
@@ -552,7 +586,6 @@ def write_branch(state: AgentState) -> AgentState:
 
 
 def reject(state: AgentState) -> AgentState:
-    """Stop safely without writing artifacts after a rejection or failure."""
     if state.get("status") == "collection_failed":
         status = "collection_failed"
     elif state.get("validation_error"):
@@ -570,23 +603,19 @@ def reject(state: AgentState) -> AgentState:
 
 
 def build_graph():
-    """Construct and compile the FinOps workflow."""
     graph = StateGraph(AgentState)
 
-    nodes = [
+    for name, function in [
         ("collect_data", collect_data),
         ("optimize", optimize),
         ("assess_risk", assess_risk),
         ("approval", approval),
         ("write", write_branch),
         ("reject", reject),
-    ]
-
-    for name, function in nodes:
+    ]:
         graph.add_node(name, function)
 
     graph.add_edge(START, "collect_data")
-
     graph.add_conditional_edges(
         "collect_data",
         route_collection,
@@ -595,9 +624,7 @@ def build_graph():
             "reject": "reject",
         },
     )
-
     graph.add_edge("optimize", "assess_risk")
-
     graph.add_conditional_edges(
         "assess_risk",
         route_assessment,
@@ -606,7 +633,6 @@ def build_graph():
             "reject": "reject",
         },
     )
-
     graph.add_conditional_edges(
         "approval",
         route_approval,
@@ -615,7 +641,6 @@ def build_graph():
             "reject": "reject",
         },
     )
-
     graph.add_edge("write", END)
     graph.add_edge("reject", END)
 
