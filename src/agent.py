@@ -5,6 +5,8 @@ import os
 import re
 import subprocess
 import uuid
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -438,54 +440,78 @@ def _write_artifacts(directory: Path, state: AgentState) -> None:
     )
 
 
-def write_branch(state: AgentState) -> AgentState:
-    """Write artifacts and commit locally; never push or mutate cloud resources."""
-    repo = Path(os.getenv("FINOPS_GIT_REPO", ".")).resolve()
-    output_name = os.getenv("FINOPS_OUTPUT_DIR", "artifacts")
-
-    if not re.fullmatch(r"[A-Za-z0-9_-]+", output_name):
+def write_branch(s: AgentState) -> AgentState:
+    """Write and commit local proposal artifacts with rollback on failure."""
+    if s.get("approved") is not True:
         return {
             "status": "write_blocked",
-            "events": _event(state, "Invalid output directory"),
+            "events": _event(
+                s,
+                "Local write blocked because explicit human approval is missing",
+            ),
         }
 
-    def git(*args: str, env: dict[str, str] | None = None):
-        git_env = {
-            **os.environ,
-            "GIT_TERMINAL_PROMPT": "0",
-        }
-        if env:
-            git_env.update(env)
+    repo = Path(os.getenv("FINOPS_GIT_REPO", ".")).resolve()
+    out_name = os.getenv("FINOPS_OUTPUT_DIR", "artifacts")
 
-        return subprocess.run(
-            ["git", *args],
-            cwd=repo,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            shell=False,
-            check=False,
-            env=git_env,
-        )
-
-    if not (repo / ".git").exists():
-        output_path = Path(output_name).resolve()
-        _write_artifacts(output_path, state)
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", out_name):
         return {
-            "output_path": str(output_path),
+            "status": "write_blocked",
+            "events": _event(s, "Invalid output directory"),
+        }
+
+    run_id = s.get("run_id")
+    if not run_id or not re.fullmatch(r"[A-Za-z0-9_-]+", run_id):
+        return {
+            "status": "write_blocked",
+            "events": _event(s, "Invalid or missing run ID"),
+        }
+
+    def git(*args, env=None):
+        try:
+            return subprocess.run(
+                ["git", *args],
+                cwd=repo,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                shell=False,
+                check=False,
+                env={
+                    **os.environ,
+                    "GIT_TERMINAL_PROMPT": "0",
+                    **(env or {}),
+                },
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+
+    # Without a repository, write local artifacts only.
+    if not (repo / ".git").exists():
+        out = Path(out_name).resolve()
+        try:
+            _write_artifacts(out, s)
+        except Exception:
+            return {
+                "status": "write_failed",
+                "events": _event(s, "Local artifact writing failed"),
+            }
+
+        return {
+            "output_path": str(out),
             "status": "artifacts_written",
             "events": _event(
-                state,
+                s,
                 "Local artifacts written; no Git repository found",
             ),
         }
 
     dirty = git("status", "--porcelain")
-    if dirty.returncode != 0 or dirty.stdout.strip():
+    if dirty is None or dirty.returncode != 0 or dirty.stdout.strip():
         return {
             "status": "write_blocked",
             "events": _event(
-                state,
+                s,
                 "Repository must be clean before branch operation",
             ),
         }
@@ -493,96 +519,156 @@ def write_branch(state: AgentState) -> AgentState:
     prefix = re.sub(
         r"[^A-Za-z0-9/_-]",
         "-",
-        os.getenv(
-            "FINOPS_GIT_BRANCH_PREFIX",
-            "finops/optimization",
-        ),
+        os.getenv("FINOPS_GIT_BRANCH_PREFIX", "finops/optimization"),
     ).strip("/")
 
-    if not prefix:
+    if (
+        not prefix
+        or any(part in ("", ".", "..") for part in prefix.split("/"))
+    ):
         return {
             "status": "write_blocked",
-            "events": _event(state, "Invalid Git branch prefix"),
+            "events": _event(s, "Invalid Git branch prefix"),
         }
 
-    branch = f"{prefix}/{state['run_id']}"
-    current_branch = git("branch", "--show-current")
+    branch = f"{prefix}/{run_id}"
+    original = git("branch", "--show-current")
 
-    if current_branch.returncode != 0 or not current_branch.stdout.strip():
+    if original is None or original.returncode != 0 or not original.stdout.strip():
         return {
             "status": "write_blocked",
-            "events": _event(
-                state,
-                "Cannot determine current Git branch",
-            ),
+            "events": _event(s, "Cannot determine current branch"),
         }
 
-    if git("switch", "-c", branch).returncode != 0:
-        return {
-            "status": "write_blocked",
-            "events": _event(state, "Branch creation failed"),
-        }
+    original_branch = original.stdout.strip()
+    out = repo / out_name
+    backup_parent = None
+    branch_created = False
 
-    output_path = repo / output_name
-
+    # Preserve any pre-existing output directory, including ignored files.
+    # This prevents a failed run from destroying artifacts from earlier runs.
     try:
-        _write_artifacts(output_path, state)
-    except OSError as exc:
+        if out.exists():
+            backup_parent = tempfile.mkdtemp(prefix="finops-backup-")
+            backup = Path(backup_parent) / "output-backup"
+            if out.is_dir():
+                shutil.copytree(out, backup)
+            else:
+                shutil.copy2(out, backup)
+
+        switch_result = git("switch", "-c", branch)
+        if switch_result is None or switch_result.returncode != 0:
+            return {
+                "status": "write_blocked",
+                "events": _event(s, "Branch creation failed"),
+            }
+
+        branch_created = True
+
+        _write_artifacts(out, s)
+
+        add_result = git("add", "--", out_name)
+        if add_result is None or add_result.returncode != 0:
+            raise RuntimeError("Git add failed")
+
+        # A successful git add must stage the intended proposal artifacts.
+        staged = git("diff", "--cached", "--quiet", "--", out_name)
+        if staged is None or staged.returncode == 0:
+            raise RuntimeError("No proposal artifacts were staged")
+
+        name = os.getenv(
+            "FINOPS_GIT_AUTHOR_NAME",
+            "FinOps Optimization Agent",
+        )
+        email = os.getenv(
+            "FINOPS_GIT_AUTHOR_EMAIL",
+            "finops-agent@example.invalid",
+        )
+
+        commit_env = {
+            "GIT_AUTHOR_NAME": name,
+            "GIT_AUTHOR_EMAIL": email,
+            "GIT_COMMITTER_NAME": name,
+            "GIT_COMMITTER_EMAIL": email,
+        }
+
+        commit_result = git(
+            "commit",
+            "-m",
+            f"chore(finops): proposal {run_id}",
+            env=commit_env,
+        )
+        if commit_result is None or commit_result.returncode != 0:
+            raise RuntimeError("Git commit failed")
+
         return {
-            "status": "write_blocked",
+            "output_path": str(out),
             "git_branch": branch,
+            "status": "branch_committed",
             "events": _event(
-                state,
-                f"Artifact writing failed: {exc}",
+                s,
+                f"Committed {branch}; no remote push",
             ),
         }
 
-    if git("add", "--", output_name).returncode != 0:
+    except Exception as exc:
+        rollback_ok = True
+
+        # The original repository was clean, so restore the generated output
+        # and return to the original branch without touching unrelated files.
+        try:
+            if branch_created:
+                reset_result = git("reset", "--quiet")
+                if reset_result is None or reset_result.returncode != 0:
+                    rollback_ok = False
+
+            if backup_parent is not None:
+                backup = Path(backup_parent) / "output-backup"
+
+                if out.is_dir():
+                    shutil.rmtree(out)
+                elif out.exists():
+                    out.unlink()
+
+                if backup.exists():
+                    if backup.is_dir():
+                        shutil.copytree(backup, out)
+                    else:
+                        out.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(backup, out)
+            elif out.exists():
+                if out.is_dir():
+                    shutil.rmtree(out)
+                else:
+                    out.unlink()
+
+            if branch_created:
+                switch_back = git("switch", original_branch)
+                if switch_back is None or switch_back.returncode != 0:
+                    rollback_ok = False
+                else:
+                    delete_branch = git("branch", "-D", branch)
+                    if delete_branch is None or delete_branch.returncode != 0:
+                        rollback_ok = False
+
+        except Exception:
+            rollback_ok = False
+
+        message = "Proposal generation failed; rollback completed"
+        if not rollback_ok:
+            message = (
+                "Proposal generation failed; rollback was incomplete. "
+                "Inspect Git status and the current branch before retrying."
+            )
+
         return {
-            "status": "write_blocked",
-            "git_branch": branch,
-            "events": _event(state, "Git add failed"),
+            "status": "write_failed",
+            "events": _event(s, f"{message}: {type(exc).__name__}"),
         }
 
-    author_name = os.getenv(
-        "FINOPS_GIT_AUTHOR_NAME",
-        "FinOps Optimization Agent",
-    )
-    author_email = os.getenv(
-        "FINOPS_GIT_AUTHOR_EMAIL",
-        "finops-agent@example.invalid",
-    )
-
-    commit_env = {
-        "GIT_AUTHOR_NAME": author_name,
-        "GIT_AUTHOR_EMAIL": author_email,
-        "GIT_COMMITTER_NAME": author_name,
-        "GIT_COMMITTER_EMAIL": author_email,
-    }
-
-    commit = git(
-        "commit",
-        "-m",
-        f"chore(finops): proposal {state['run_id']}",
-        env=commit_env,
-    )
-
-    if commit.returncode != 0:
-        return {
-            "status": "write_blocked",
-            "git_branch": branch,
-            "events": _event(state, "Git commit failed"),
-        }
-
-    return {
-        "output_path": str(output_path),
-        "git_branch": branch,
-        "status": "branch_committed",
-        "events": _event(
-            state,
-            f"Committed {branch}; no remote push",
-        ),
-    }
+    finally:
+        if backup_parent is not None:
+            shutil.rmtree(backup_parent, ignore_errors=True)
 
 
 def reject(state: AgentState) -> AgentState:
