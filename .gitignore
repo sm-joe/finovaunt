@@ -80,3 +80,11 @@ override.tf.json
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Generated Finovaunt scan and smoke-test artifacts
+artifacts-dashboard-smoke/
+artifacts-live-eu-central-smoke/
+artifacts-live-validation/
+
+# Ignore other generated artifact directories at the repository root
+/artifacts-*/
