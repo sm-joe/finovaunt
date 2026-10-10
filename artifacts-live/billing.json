@@ -337,7 +337,7 @@
     "period_start": "2026-09-26",
     "period_end_exclusive": "2026-10-10",
     "granularity": "DAILY",
-    "reason": "EC2 resource-cost collection failed: ClientError: An error occurred (AccessDeniedException) when calling the GetCostAndUsageWithResources operation: Resource-level data granularity is an opt-in only feature. You can be enable this feature from the PAYER account\u2019s Cost Explorer Settings page.",
+    "reason": "EC2 resource-cost collection failed: DataUnavailableException: An error occurred (DataUnavailableException) when calling the GetCostAndUsageWithResources operation: Data is not available. Please try to adjust the time period. If just enabled Cost Explorer, data might not be ingested yet",
     "resources": [],
     "resource_attribution": "not_available"
   }
