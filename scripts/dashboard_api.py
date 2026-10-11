@@ -10,13 +10,14 @@ import sys
 import threading
 import time
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.scan_artifact_sync import SyncError, sync_latest_scan  # noqa: E402
+from scripts import access_control  # noqa: E402
 from src.utils.dashboard_data import (  # noqa: E402
     DashboardDataError,
     build_assets,
@@ -78,12 +79,87 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if origin in _ALLOWED_ORIGINS:
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
-            self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Allow-Credentials", "true")
         self.end_headers()
 
     def do_POST(self) -> None:
-        self._json(405, {"error": "method_not_allowed", "message": "This API is read-only."})
+        route = urlparse(self.path).path.rstrip("/") or "/"
+        if route not in ("/api/auth/login", "/api/auth/logout", "/api/auth/password", "/api/cloud-accounts", "/api/billing-scans"):
+            self._json(405, {"error":"method_not_allowed","message":"This API endpoint does not accept POST requests."})
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length > 65536: self._json(413, {"error":"payload_too_large","message":"Request body is too large."}); return
+            body = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+            if not isinstance(body, dict): raise ValueError("Request body must be a JSON object.")
+        except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+            self._json(400, {"error":"invalid_json","message":"Provide a valid JSON object."}); return
+        if route == "/api/auth/login":
+            result = access_control.login(str(body.get("username", "")), str(body.get("password", "")))
+            if not result: self._json(401, {"error":"invalid_credentials","message":"Username or password is incorrect."}); return
+            self._auth_json(200, {k:v for k,v in result.items() if k != "token"}, token=result["token"])
+            return
+        token = self._cookie_token()
+        current = access_control.session(token)
+        if route == "/api/auth/logout":
+            access_control.logout(token); self._auth_json(200, {"status":"logged_out"}, clear=True); return
+        if route == "/api/auth/password":
+            if not current: self._json(401, {"error":"unauthorized","message":"Please log in."}); return
+            if not access_control.change_password(token, str(body.get("current_password", "")), str(body.get("new_password", ""))):
+                self._json(400, {"error":"password_change_rejected","message":"Current password is incorrect or the new password does not meet the 12-character minimum."}); return
+            self._json(200, {"status":"password_changed"}); return
+        if not current:
+            self._json(401, {"error":"unauthorized","message":"Please log in."}); return
+        if current.get("must_change_password"):
+            self._json(403, {"error":"password_change_required","message":"Change the default password before continuing."}); return
+        if route == "/api/cloud-accounts":
+            try:
+                item = access_control.add_account(str(body.get("name", "")), str(body.get("provider", "aws")), str(body.get("account_id", "")), str(body.get("role_arn", "")), str(body.get("region", "us-east-1")), str(body.get("external_id", "")))
+                self._json(201, item)
+            except ValueError as exc: self._json(400, {"error":"invalid_account","message":str(exc)})
+            return
+        if route == "/api/billing-scans":
+            account_id = str(body.get("account_id", "")); account = access_control.get_account(account_id)
+            if not account: self._json(404, {"error":"account_not_found","message":"Onboard the AWS account first."}); return
+            try:
+                import boto3
+                sts = boto3.client("sts", region_name=account["region"])
+                assume_args = {"RoleArn": account["role_arn"], "RoleSessionName":"FinovauntBillingReadOnly"}
+                if body.get("external_id"): assume_args["ExternalId"] = str(body["external_id"])
+                credentials = sts.assume_role(**assume_args)["Credentials"]
+                assumed_sts = boto3.client("sts", region_name=account["region"], aws_access_key_id=credentials["AccessKeyId"], aws_secret_access_key=credentials["SecretAccessKey"], aws_session_token=credentials["SessionToken"])
+                if assumed_sts.get_caller_identity().get("Account") != account_id:
+                    raise ValueError("assumed role account does not match onboarded account")
+                ce = boto3.client("ce", region_name="us-east-1", aws_access_key_id=credentials["AccessKeyId"], aws_secret_access_key=credentials["SecretAccessKey"], aws_session_token=credentials["SessionToken"])
+                from datetime import date
+                start = date.today().replace(day=1); end = date.today()
+                response = ce.get_cost_and_usage(TimePeriod={"Start":start.isoformat(),"End":end.isoformat()}, Granularity="MONTHLY", Metrics=["UnblendedCost"], GroupBy=[{"Type":"DIMENSION","Key":"SERVICE"}])
+                periods = response.get("ResultsByTime", [])
+                groups = periods[0].get("Groups", []) if periods else []
+                rows = [{"service":g.get("Keys",["Unknown"])[0],"amount":float(g.get("Metrics",{}).get("UnblendedCost",{}).get("Amount",0)),"currency":g.get("Metrics",{}).get("UnblendedCost",{}).get("Unit","USD")} for g in groups]
+                total = sum(row["amount"] for row in rows)
+                result = access_control.save_billing_scan(account_id, {"scanned_at":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()),"period_start":start.isoformat(),"period_end_exclusive":end.isoformat(),"total_cost":round(total,2),"currency":rows[0]["currency"] if rows else "USD","services":rows,"status":"success"})
+                self._json(200, result)
+            except Exception as exc:
+                # Return a useful category, never credentials or SDK request details.
+                self._json(502, {"error":"billing_scan_failed","message":f"AWS billing scan failed ({type(exc).__name__}). Verify the role trust policy and Cost Explorer read permissions."})
+            return
+        self._json(405, {"error":"method_not_allowed","message":"This API endpoint does not accept POST requests."})
+
+    def _cookie_token(self) -> str | None:
+        for part in self.headers.get("Cookie", "").split(";"):
+            key, _, value = part.strip().partition("=")
+            if key == "finovaunt_session": return value
+        return None
+
+    def _auth_json(self, status: int, payload: Any, token: str | None = None, clear: bool = False) -> None:
+        encoded = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(status); self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(encoded))); self.send_header("Cache-Control", "no-store")
+        self.send_header("Set-Cookie", f"finovaunt_session={'' if clear else token or ''}; HttpOnly; SameSite=Strict; Path=/; Max-Age={0 if clear else 43200}")
+        self.end_headers(); self.wfile.write(encoded)
 
     def do_PUT(self) -> None:
         self._json(405, {"error": "method_not_allowed", "message": "This API is read-only."})
@@ -96,11 +172,32 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if route == "/api/health":
             self._json(200, {"status": "ok", "service": "finovaunt-dashboard-api", "read_only": True})
             return
+        if route == "/api/auth/session":
+            current = access_control.session(self._cookie_token())
+            self._json(200, {"authenticated": bool(current), **(current or {})})
+            return
+        if route == "/api/auth/verify":
+            current = access_control.session(self._cookie_token())
+            if not current or current.get("must_change_password"):
+                self._json(401, {"error": "unauthorized", "message": "Login and password change required."})
+            else:
+                self._json(200, {"authorized": True})
+            return
+        if route == "/api/cloud-accounts":
+            current = access_control.session(self._cookie_token())
+            if not current: self._json(401, {"error":"unauthorized","message":"Please log in."}); return
+            if current.get("must_change_password"): self._json(403, {"error":"password_change_required","message":"Change the default password before continuing."}); return
+            self._json(200, {"items":access_control.list_accounts()}); return
+        if route.startswith("/api/billing-scans/"):
+            current = access_control.session(self._cookie_token())
+            if not current: self._json(401, {"error":"unauthorized","message":"Please log in."}); return
+            if current.get("must_change_password"): self._json(403, {"error":"password_change_required","message":"Change the default password before continuing."}); return
+            account_id = route.removeprefix("/api/billing-scans/")
+            self._json(200, {"items":access_control.billing_history(account_id)}); return
         if route == "/api/sync-status":
             with _SYNC_LOCK:
                 self._json(200, dict(_SYNC_STATUS))
             return
-
         try:
             artifacts = load_artifacts(_artifact_dir())
             if route == "/api/overview":

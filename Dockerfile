@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-# Read-only dashboard API image. The dashboard projection API uses Python's standard library.
+# Dashboard API image with read-only dashboard projections, auth, and AWS Cost Explorer integration.
 FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -14,9 +14,11 @@ WORKDIR /app
 # Copy application source, but never bake live scan artifacts or credentials into the image.
 COPY src/ ./src/
 COPY scripts/dashboard_api.py ./scripts/dashboard_api.py
+COPY scripts/access_control.py ./scripts/access_control.py
 COPY scripts/scan_artifact_sync.py ./scripts/scan_artifact_sync.py
 
-RUN mkdir -p /app/artifacts-live \
+RUN pip install --no-cache-dir boto3 \
+    && mkdir -p /app/artifacts-live /app/data \
     && groupadd --system --gid 10001 finovaunt \
     && useradd --system --uid 10001 --gid finovaunt --home-dir /nonexistent finovaunt \
     && chown -R finovaunt:finovaunt /app

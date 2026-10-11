@@ -1,6 +1,9 @@
 services:
   api:
-    image: ghcr.io/sm-joe/finovaunt-api:latest
+    image: finovaunt-api:local
+    build:
+      context: .
+      dockerfile: Dockerfile
     environment:
       FINOVAUNT_API_HOST: 0.0.0.0
       FINOVAUNT_API_PORT: "8787"
@@ -8,10 +11,16 @@ services:
       FINOVAUNT_SCAN_WORKFLOW: finovaunt-scan.yml
       FINOPS_OUTPUT_DIR: artifacts-live
       FINOVAUNT_GITHUB_TOKEN: ${FINOVAUNT_GITHUB_TOKEN:?Set FINOVAUNT_GITHUB_TOKEN in .env}
+      AWS_PROFILE: default
+      AWS_CONFIG_FILE: /aws/config
+      AWS_SHARED_CREDENTIALS_FILE: /aws/credentials
+      AWS_SDK_LOAD_CONFIG: "1"
     ports:
       - "127.0.0.1:8787:8787"
     volumes:
       - ./artifacts-live:/app/artifacts-live
+      - ./data:/app/data
+      - "${USERPROFILE}/.aws:/aws:ro"
     read_only: true
     tmpfs:
       - /tmp:size=16m,noexec,nosuid
@@ -32,7 +41,12 @@ services:
       retries: 3
 
   frontend:
-    image: ghcr.io/sm-joe/finovaunt-dashboard:latest
+    image: finovaunt-dashboard:local
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      NGINX_ENVSUBST_ON_TEMPLATES_DIR: /dev/null
     depends_on:
       api:
         condition: service_healthy

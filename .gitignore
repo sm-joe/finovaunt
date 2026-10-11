@@ -88,3 +88,6 @@ artifacts-live-validation/
 
 # Ignore other generated artifact directories at the repository root
 /artifacts-*/
+# Persistent login and cloud-account state (contains password hashes and metadata)
+/data/control-plane.json
+/data/control-plane.json.tmp
