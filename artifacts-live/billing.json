@@ -332,13 +332,26 @@
   "resource_attribution": "not_available",
   "note": "Account-level costs grouped by service and region. Cost Explorer data can be delayed. These amounts must not be treated as individual resource costs or realized savings.",
   "ec2_resource_costs": {
-    "status": "unavailable",
+    "status": "available",
     "resource_type": "EC2",
-    "period_start": "2026-09-26",
-    "period_end_exclusive": "2026-10-10",
+    "period_start": "2026-09-27",
+    "period_end_exclusive": "2026-10-11",
     "granularity": "DAILY",
-    "reason": "EC2 resource-cost collection failed: DataUnavailableException: An error occurred (DataUnavailableException) when calling the GetCostAndUsageWithResources operation: Data is not available. Please try to adjust the time period. If just enabled Cost Explorer, data might not be ingested yet",
-    "resources": [],
-    "resource_attribution": "not_available"
+    "metric": "UnblendedCost",
+    "group_by": [
+      "RESOURCE_ID",
+      "REGION"
+    ],
+    "resources": [
+      {
+        "resource_id": "i-02dd62b24cadeccce",
+        "region": "eu-central-1",
+        "amount": 1.2271e-06,
+        "currency": "USD"
+      }
+    ],
+    "unattributed_group_count": 0,
+    "resource_attribution": "resource_id",
+    "note": "Costs are aggregated only for returned EC2 resource IDs. Unattributed groups are excluded, and this result is not guaranteed to represent the complete EC2 bill or realized savings. Cost Explorer data may be delayed."
   }
 }

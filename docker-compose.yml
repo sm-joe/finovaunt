@@ -4,11 +4,14 @@ services:
     environment:
       FINOVAUNT_API_HOST: 0.0.0.0
       FINOVAUNT_API_PORT: "8787"
-      FINOPS_OUTPUT_DIR: artifacts-live-validation
+      FINOVAUNT_GITHUB_REPOSITORY: sm-joe/finovaunt
+      FINOVAUNT_SCAN_WORKFLOW: finovaunt-scan.yml
+      FINOPS_OUTPUT_DIR: artifacts-live
+      FINOVAUNT_GITHUB_TOKEN: ${FINOVAUNT_GITHUB_TOKEN:?Set FINOVAUNT_GITHUB_TOKEN in .env}
     ports:
       - "127.0.0.1:8787:8787"
     volumes:
-      - ./artifacts-live-validation:/app/artifacts-live-validation:ro
+      - ./artifacts-live:/app/artifacts-live
     read_only: true
     tmpfs:
       - /tmp:size=16m,noexec,nosuid
@@ -17,6 +20,16 @@ services:
     security_opt:
       - no-new-privileges:true
     restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/api/health', timeout=2)"
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
 
   frontend:
     image: ghcr.io/sm-joe/finovaunt-dashboard:latest

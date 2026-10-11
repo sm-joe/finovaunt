@@ -12,6 +12,7 @@ WORKDIR /app
 # Copy application source, but never bake live scan artifacts or credentials into the image.
 COPY src/ ./src/
 COPY scripts/dashboard_api.py ./scripts/dashboard_api.py
+COPY scripts/scan_artifact_sync.py ./scripts/scan_artifact_sync.py
 
 RUN mkdir -p /app/artifacts-live \
     && groupadd --system --gid 10001 finovaunt \

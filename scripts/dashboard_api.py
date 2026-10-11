@@ -7,6 +7,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import re
 import sys
+import threading
+import time
 from typing import Any
 from urllib.parse import urlparse
 
@@ -14,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from scripts.scan_artifact_sync import SyncError, sync_latest_scan  # noqa: E402
 from src.utils.dashboard_data import (  # noqa: E402
     DashboardDataError,
     build_assets,
@@ -23,6 +26,17 @@ from src.utils.dashboard_data import (  # noqa: E402
     build_scans,
     load_artifacts,
 )
+
+_SYNC_LOCK = threading.Lock()
+_SYNC_STATUS: dict[str, Any] = {
+    "enabled": False,
+    "status": "disabled",
+    "message": "Configure FINOVAUNT_GITHUB_TOKEN or GH_TOKEN to sync GitHub scan artifacts automatically.",
+    "last_checked_at": None,
+    "last_success_at": None,
+    "github_run_id": None,
+    "scan_run_id": None,
+}
 
 _ALLOWED_ORIGINS = {
     "http://localhost:5173",
@@ -82,6 +96,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if route == "/api/health":
             self._json(200, {"status": "ok", "service": "finovaunt-dashboard-api", "read_only": True})
             return
+        if route == "/api/sync-status":
+            with _SYNC_LOCK:
+                self._json(200, dict(_SYNC_STATUS))
+            return
 
         try:
             artifacts = load_artifacts(_artifact_dir())
@@ -120,6 +138,43 @@ class DashboardHandler(BaseHTTPRequestHandler):
         sys.stderr.write("Finovaunt API: " + (format % args) + "\n")
 
 
+def _sync_worker() -> None:
+    token = os.getenv("FINOVAUNT_GITHUB_TOKEN") or os.getenv("GH_TOKEN") or ""
+    repository = os.getenv("FINOVAUNT_GITHUB_REPOSITORY", "sm-joe/finovaunt")
+    workflow = os.getenv("FINOVAUNT_SCAN_WORKFLOW", "finovaunt-scan.yml")
+    output_dir = _artifact_dir()
+    interval = max(30, int(os.getenv("FINOVAUNT_SYNC_INTERVAL_SECONDS", "60")))
+    with _SYNC_LOCK:
+        _SYNC_STATUS.update({"enabled": True, "status": "starting", "message": "Waiting for the first GitHub artifact sync."})
+    while True:
+        try:
+            result = sync_latest_scan(output_dir, token=token, repository=repository, workflow=workflow)
+            now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            with _SYNC_LOCK:
+                _SYNC_STATUS.update({
+                    "enabled": True,
+                    "status": result.get("status", "ok"),
+                    "message": "Latest successful read-only scan artifact is available." if result.get("status") == "synced" else "Dashboard artifacts are already up to date.",
+                    "last_checked_at": now,
+                    "last_success_at": result.get("synced_at") or _SYNC_STATUS.get("last_success_at"),
+                    "github_run_id": result.get("github_run_id"),
+                    "scan_run_id": result.get("scan_run_id"),
+                    "github_run_url": result.get("github_run_url"),
+                    "error": None,
+                })
+        except Exception as exc:
+            with _SYNC_LOCK:
+                _SYNC_STATUS.update({
+                    "enabled": True,
+                    "status": "error",
+                    "message": str(exc),
+                    "last_checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "error": str(exc),
+                })
+            print(f"Finovaunt artifact sync warning: {exc}", file=sys.stderr)
+        time.sleep(interval)
+
+
 def main() -> int:
     host = os.getenv("FINOVAUNT_API_HOST", "127.0.0.1")
     try:
@@ -130,10 +185,17 @@ def main() -> int:
     if not 1 <= port <= 65535:
         print("ERROR: FINOVAUNT_API_PORT must be between 1 and 65535.", file=sys.stderr)
         return 2
+    token = os.getenv("FINOVAUNT_GITHUB_TOKEN") or os.getenv("GH_TOKEN")
+    if token:
+        with _SYNC_LOCK:
+            _SYNC_STATUS.update({"enabled": True, "status": "starting", "message": "Automatic GitHub artifact sync is starting."})
+        threading.Thread(target=_sync_worker, name="finovaunt-artifact-sync", daemon=True).start()
+    else:
+        print("Automatic artifact sync disabled: set FINOVAUNT_GITHUB_TOKEN or GH_TOKEN.", file=sys.stderr)
     server = ThreadingHTTPServer((host, port), DashboardHandler)
     print(f"Finovaunt read-only dashboard API listening on http://{host}:{port}")
     print(f"Artifact directory: {_artifact_dir()}")
-    print("Endpoints: /api/health /api/overview /api/opportunities /api/assets /api/scans")
+    print("Endpoints: /api/health /api/sync-status /api/overview /api/opportunities /api/assets /api/scans")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

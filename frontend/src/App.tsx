@@ -60,12 +60,12 @@ async function getJSON<T>(path: string): Promise<T> {
   return body as T;
 }
 
-type Tab = "Overview" | "Opportunities" | "Assets" | "Scan history";
+type Tab = "Overview" | "Opportunities" | "Assets" | "Scan History";
 const tabs: { label: Tab; icon: typeof Gauge }[] = [
   { label: "Overview", icon: Gauge },
   { label: "Opportunities", icon: Sparkles },
   { label: "Assets", icon: Boxes },
-  { label: "Scan history", icon: Activity },
+  { label: "Scan History", icon: Activity },
 ];
 
 export default function App() {
@@ -136,7 +136,7 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="security-note"><ShieldCheck size={17} /><div><strong>Guardrails active</strong><span>Read-only dashboard</span></div></div>
+          <div className="security-note"><ShieldCheck size={17} /><div><strong>Guardrails Active</strong><span>Read-only Dashboard</span></div></div>
           <span className="version">FINOVAUNT · MVP</span>
         </div>
       </aside>
@@ -145,7 +145,7 @@ export default function App() {
         <header className="topbar">
           <div className="breadcrumb"><span>Finovaunt</span><span className="slash">/</span><strong>{tab}</strong></div>
           <div className="topbar-actions">
-            <span className={`api-state ${apiOnline ? "online" : "offline"}`}><i />{apiOnline ? "API connected" : "API unavailable"}</span>
+            <span className={`api-state ${apiOnline ? "online" : "offline"}`}><i />{apiOnline ? "API Connected" : "API Unavailable"}</span>
             <button className="icon-button" onClick={() => void refresh()} disabled={loading} aria-label="Refresh dashboard" title="Refresh data"><RefreshCw size={16} className={loading ? "spin" : ""} /></button>
             <div className="avatar">F</div>
           </div>
@@ -167,36 +167,36 @@ export default function App() {
 
           {tab === "Overview" && <>
             <div className="metric-grid">
-              <Metric icon={Wallet} label="Account cloud spend" value={money(overview?.cloud_spend?.amount, overview?.cloud_spend?.currency)} note={overview?.cloud_spend?.status ? titleCase(overview.cloud_spend.status) : "Billing context unavailable"} tone="blue" />
-              <Metric icon={CircleDollarSign} label="Potential monthly savings" value={money(overview?.potential_monthly_savings_usd)} note="Resource-cost evidence only" tone="green" />
-              <Metric icon={Sparkles} label="Simulated savings" value={money(overview?.simulated_monthly_savings_usd)} note="Excluded from potential savings" tone="purple" />
-              <Metric icon={Boxes} label="Resources scanned" value={overview?.resources_scanned?.toLocaleString() ?? "—"} note={`${overview?.opportunities ?? 0} optimization opportunities`} tone="amber" />
+              <Metric icon={Wallet} label="Account Cloud Spend" value={money(overview?.cloud_spend?.amount, overview?.cloud_spend?.currency)} note={overview?.cloud_spend?.status ? titleCase(overview.cloud_spend.status) : "Billing context unavailable"} tone="blue" />
+              <Metric icon={CircleDollarSign} label="Potential Monthly Savings" value={money(overview?.potential_monthly_savings_usd)} note="Resource-cost evidence only" tone="green" />
+              <Metric icon={Sparkles} label="Simulated Savings" value={money(overview?.simulated_monthly_savings_usd)} note="Excluded from potential savings" tone="purple" />
+              <Metric icon={Boxes} label="Resources Scanned" value={overview?.resources_scanned?.toLocaleString() ?? "—"} note={`${overview?.opportunities ?? 0} optimization opportunities`} tone="amber" />
             </div>
 
             <div className="content-grid">
               <section className="panel spend-panel">
-                <PanelHeading eyebrow="SCAN SNAPSHOT" title="Latest cost intelligence" icon={Activity} />
-                <div className="snapshot-row"><span>Data source</span><strong>{titleCase(overview?.data_source)}</strong></div>
-                <div className="snapshot-row"><span>Last generated</span><strong>{date(overview?.generated_at)}</strong></div>
+                <PanelHeading eyebrow="SCAN SNAPSHOT" title="Latest Cost Intelligence" icon={Activity} />
+                <div className="snapshot-row"><span>Data Source</span><strong>{titleCase(overview?.data_source)}</strong></div>
+                <div className="snapshot-row"><span>Last Generated</span><strong>{date(overview?.generated_at)}</strong></div>
                 <div className="snapshot-row"><span>Run ID</span><code>{overview?.run_id || "—"}</code></div>
-                <div className="snapshot-row"><span>Scans in history</span><strong>{overview?.scan_count ?? scans.length}</strong></div>
-                <div className="snapshot-row"><span>Resources without estimable savings</span><strong>{overview?.resources_without_estimable_savings ?? 0}</strong></div>
+                <div className="snapshot-row"><span>Scans in History</span><strong>{overview?.scan_count ?? scans.length}</strong></div>
+                <div className="snapshot-row"><span>Resources without Estimable Savings</span><strong>{overview?.resources_without_estimable_savings ?? 0}</strong></div>
                 <div className="context-note"><Database size={16} /><span>Account-level billing is contextual only and is not attributed to individual resources.</span></div>
               </section>
               <section className="panel">
-                <PanelHeading eyebrow="OPTIMIZATION PIPELINE" title="Recommendation mix" icon={Layers3} />
+                <PanelHeading eyebrow="OPTIMIZATION PIPELINE" title="Recommendation Mix" icon={Layers3} />
                 {Object.entries(overview?.action_counts ?? {}).length === 0
                   ? <EmptyState text="No recommendation counts are available in this snapshot." />
                   : <div className="mix-list">{Object.entries(overview?.action_counts ?? {}).sort((a,b) => b[1]-a[1]).map(([action,count]) => {
                     const total = Math.max(1, overview?.resources_scanned ?? 1);
                     return <div className="mix-row" key={action}><div className="mix-label"><span>{titleCase(action)}</span><strong>{count}</strong></div><div className="bar-track"><div className="bar-fill" style={{width: `${Math.min(100, count / total * 100)}%`}} /></div></div>;
                   })}</div>}
-                <div className="realized-box"><div className="realized-icon"><CheckCircle2 size={17} /></div><div><strong>Realized savings</strong><span>Not verified — requires post-change measurement</span></div><b>—</b></div>
+                <div className="realized-box"><div className="realized-icon"><CheckCircle2 size={17} /></div><div><strong>Realized Savings</strong><span>Not verified — requires post-change measurement</span></div><b>—</b></div>
               </section>
             </div>
 
             <section className="panel table-panel">
-              <PanelHeading eyebrow="TOP OPPORTUNITIES" title="Evidence-led recommendations" icon={Sparkles} action={<button className="text-button" onClick={() => setTab("Opportunities")}>View all <ArrowUpRight size={14} /></button>} />
+              <PanelHeading eyebrow="TOP OPPORTUNITIES" title="Evidence-Led Recommendations" icon={Sparkles} action={<button className="text-button" onClick={() => setTab("Opportunities")}>View all <ArrowUpRight size={14} /></button>} />
               <OpportunityTable rows={opportunities.slice(0,5)} />
             </section>
           </>}
@@ -216,10 +216,10 @@ export default function App() {
               </tbody></table></div>}
           </section>}
 
-          {tab === "Scan history" && <section className="panel table-panel">
-            <PanelHeading eyebrow="AUDITABLE RUNS" title="Scan history" icon={Clock3} />
+          {tab === "Scan History" && <section className="panel table-panel">
+            <PanelHeading eyebrow="AUDITABLE RUNS" title="Scan History" icon={Clock3} />
             {scans.length === 0 ? <EmptyState text="No scan history is available in this artifact snapshot." /> :
-              <div className="table-scroll"><table><thead><tr><th>Run</th><th>Generated</th><th>Resources</th><th>Recommendations</th><th>Realized savings</th></tr></thead><tbody>
+              <div className="table-scroll"><table><thead><tr><th>Run</th><th>Generated</th><th>Resources</th><th>Recommendations</th><th>Realized Savings</th></tr></thead><tbody>
                 {scans.map((scan) => <tr key={scan.run_id}><td><code>{scan.run_id}</code></td><td>{date(scan.generated_at)}</td><td>{scan.resource_count ?? 0}</td><td>{Object.entries(scan.action_counts ?? {}).filter(([key]) => !["no_change","not_proposed"].includes(key)).reduce((sum,[,n])=>sum+n,0)}</td><td><span className="pill neutral">{titleCase(scan.realized_savings?.status || "not_verified")}</span></td></tr>)}
               </tbody></table></div>}
           </section>}
