@@ -7,10 +7,16 @@ on:
         description: Backend Files Changed
         required: true
         type: boolean
+
       frontend_changed:
         description: Frontend Files Changed
         required: true
         type: boolean
+
+      pipeline_changed:
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
