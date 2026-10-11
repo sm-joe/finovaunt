@@ -89,6 +89,8 @@ jobs:
 
   compose:
     name: Validate Docker Compose Configuration
+    env:
+      FINOVAUNT_GITHUB_TOKEN: ${{ secrets.FINOVAUNT_GITHUB_TOKEN }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
