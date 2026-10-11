@@ -74,21 +74,9 @@ jobs:
             pipeline:
               - '.github/workflows/**'
 
-  ci:
-    name: Required CI Gate
-    needs: changes
-    if: >-
-      needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.pipeline == 'true'
-    uses: ./.github/workflows/ci.yml
-    with:
-      backend_changed: ${{ needs.changes.outputs.backend == 'true' }}
-      frontend_changed: ${{ needs.changes.outputs.frontend == 'true' }}
-      pipeline_changed: ${{ needs.changes.outputs.pipeline == 'true' }}
-    secrets: inherit
-
   security:
     name: Required Security Gate
-    needs: [changes, ci]
+    needs: changes
     if: >-
       needs.changes.outputs.backend == 'true' ||
       needs.changes.outputs.frontend == 'true' ||
@@ -100,11 +88,23 @@ jobs:
       pipeline_changed: ${{ needs.changes.outputs.pipeline == 'true' }}
     secrets: inherit
 
+  ci:
+    name: Required CI Gate
+    needs: [changes, security]
+    if: >-
+      needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.pipeline == 'true'
+    uses: ./.github/workflows/ci.yml
+    with:
+      backend_changed: ${{ needs.changes.outputs.backend == 'true' }}
+      frontend_changed: ${{ needs.changes.outputs.frontend == 'true' }}
+      pipeline_changed: ${{ needs.changes.outputs.pipeline == 'true' }}
+    secrets: inherit
+
   build-api:
     name: Build and Publish API Image
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [changes, security]
+    needs: [changes, security, ci]
 
     permissions:
       contents: read
@@ -152,7 +152,7 @@ jobs:
     name: Build and Publish Dashboard Image
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [changes, security]
+    needs: [changes, security, ci]
 
     permissions:
       contents: read
