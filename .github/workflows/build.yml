@@ -24,6 +24,7 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       backend_image: ${{ steps.filter.outputs.backend_image }}
       frontend_image: ${{ steps.filter.outputs.frontend_image }}
+      pipeline: ${{ steps.filter.outputs.pipeline }}
 
     steps:
 
@@ -69,6 +70,9 @@ jobs:
               - 'frontend/package-lock.json'
               - 'frontend/tsconfig*.json'
               - 'frontend/vite.config.*'
+
+            pipeline:
+              - '.github/workflows/**'
 
   ci:
     name: Required CI Gate
