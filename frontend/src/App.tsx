@@ -1,4 +1,3 @@
-// CI pipeline integration test
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
