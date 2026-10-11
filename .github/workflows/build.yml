@@ -78,7 +78,7 @@ jobs:
     name: Required CI Gate
     needs: changes
     if: >-
-      needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true'
+      needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.pipeline == 'true'
     uses: ./.github/workflows/ci.yml
     with:
       backend_changed: ${{ needs.changes.outputs.backend == 'true' }}
@@ -91,7 +91,8 @@ jobs:
     needs: [changes, ci]
     if: >-
       needs.changes.outputs.backend == 'true' ||
-      needs.changes.outputs.frontend == 'true'
+      needs.changes.outputs.frontend == 'true' ||
+      needs.changes.outputs.pipeline == 'true'
     uses: ./.github/workflows/security.yml
     with:
       backend_changed: ${{ needs.changes.outputs.backend == 'true' }}
