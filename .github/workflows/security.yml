@@ -22,7 +22,7 @@ concurrency:
 jobs:
   secret_scan:
     name: Secret Scanning
-    if: inputs.backend_changed || inputs.frontend_changed
+    if: inputs.backend_changed || inputs.frontend_changed || inputs.pipeline_changed
     runs-on: ubuntu-latest
     timeout-minutes: 10
 

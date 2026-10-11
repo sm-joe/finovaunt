@@ -7,10 +7,16 @@ on:
         description: Backend Files Changed
         required: true
         type: boolean
+
       frontend_changed:
         description: Frontend Files Changed
         required: true
         type: boolean
+        
+      pipeline_changed:
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -22,7 +28,7 @@ concurrency:
 jobs:
   backend_ci:
     name: Backend Tests
-    if: inputs.backend_changed
+    if: inputs.backend_changed || inputs.pipeline_changed
     runs-on: ubuntu-latest
     timeout-minutes: 15
     
@@ -55,7 +61,7 @@ jobs:
 
   frontend_ci:
     name: Frontend Build
-    if: inputs.frontend_changed
+    if: inputs.frontend_changed || inputs.pipeline_changed
     runs-on: ubuntu-latest
     timeout-minutes: 15
 

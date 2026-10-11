@@ -83,6 +83,7 @@ jobs:
     with:
       backend_changed: ${{ needs.changes.outputs.backend == 'true' }}
       frontend_changed: ${{ needs.changes.outputs.frontend == 'true' }}
+      pipeline_changed: ${{ needs.changes.outputs.pipeline == 'true' }}
     secrets: inherit
 
   security:
@@ -95,6 +96,7 @@ jobs:
     with:
       backend_changed: ${{ needs.changes.outputs.backend == 'true' }}
       frontend_changed: ${{ needs.changes.outputs.frontend == 'true' }}
+      pipeline_changed: ${{ needs.changes.outputs.pipeline == 'true' }}
     secrets: inherit
 
   build-api:
