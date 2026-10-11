@@ -2,6 +2,15 @@ name: Finovaunt Security Pipeline
 
 on:
   workflow_call:
+    inputs:
+      backend_changed:
+        description: Backend Files Changed
+        required: true
+        type: boolean
+      frontend_changed:
+        description: Frontend Files Changed
+        required: true
+        type: boolean
 
 permissions:
   contents: read
@@ -11,11 +20,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  secrets:
+  secret_scan:
     name: Secret Scanning
+    if: inputs.backend_changed || inputs.frontend_changed
     runs-on: ubuntu-latest
     timeout-minutes: 10
+
     steps:
+
       - name: Check out repository
         uses: actions/checkout@v7
         with:
@@ -26,11 +38,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  dependencies:
+  backend_security:
     name: Dependency Vulnerability Checks
+    if: inputs.backend_changed
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
     steps:
+
       - name: Check Out Repository
         uses: actions/checkout@v7
 
@@ -59,6 +74,26 @@ jobs:
       - name: Audit Python Dependencies
         run: uvx pip-audit -r "$RUNNER_TEMP/finovaunt-requirements.txt"
 
+      - name: Scan backend Dockerfile configuration
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: "v0.75.0"
+          scan-type: config
+          scan-ref: Dockerfile
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+
+  frontend_security:
+    name: Frontend Dependency and Dockerfile Security
+    if: inputs.frontend_changed
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Check Out Repository
+        uses: actions/checkout@v7
+
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
@@ -66,7 +101,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install locked frontend dependencies
+      - name: Install Locked Frontend Dependencies
         working-directory: frontend
         run: npm ci
 
@@ -74,11 +109,23 @@ jobs:
         working-directory: frontend
         run: npm audit --audit-level=high
 
+      - name: Scan frontend Dockerfile configuration
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: "v0.75.0"
+          scan-type: config
+          scan-ref: frontend/Dockerfile
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+
   filesystem:
     name: Trivy Filesystem and Configuration Scan
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
     steps:
+      
       - name: Check Out Repository
         uses: actions/checkout@v7
 

@@ -2,6 +2,15 @@ name: Finovaunt CI Pipeline
 
 on:
   workflow_call:
+    inputs:
+      backend_changed:
+        description: Backend Files Changed
+        required: true
+        type: boolean
+      frontend_changed:
+        description: Frontend Files Changed
+        required: true
+        type: boolean
 
 permissions:
   contents: read
@@ -11,11 +20,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  python:
-    name: Python Compile and Tests
+  backend_ci:
+    name: Backend Tests
+    if: inputs.backend_changed
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    
     steps:
+
       - name: Check Out Repository
         uses: actions/checkout@v7
 
@@ -38,17 +50,21 @@ jobs:
       - name: Compile Python Source and Tests
         run: uv run python -m compileall -q src scripts tests
 
-      - name: Run Test Suite
-        run: uv run pytest -q
+      - name: Run Backend Tests
+        run: uv run python -m pytest -q
 
-  frontend:
-    name: Frontend Type-check and Production Build
+  frontend_ci:
+    name: Frontend Build
+    if: inputs.frontend_changed
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
     defaults:
       run:
         working-directory: frontend
+
     steps:
+      
       - name: Check Out Repository
         uses: actions/checkout@v7
 
