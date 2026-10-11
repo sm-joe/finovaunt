@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 # Read-only dashboard API image. The dashboard projection API uses Python's standard library.
 FROM python:3.13-slim
 
