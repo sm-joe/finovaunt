@@ -1,4 +1,5 @@
 """LangGraph FinOps workflow: collect, optimize, assess, approve, branch."""
+# CI pipeline integration test
 
 import hashlib
 import json
