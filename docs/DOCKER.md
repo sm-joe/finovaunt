@@ -78,6 +78,30 @@ Do not commit these credentials to a file or share them in logs. Environment var
 
 **Correct absence semantics:** No onboarded accounts → onboarding prompt; no completed billing collection → no amount; successful empty AWS response → zero observed resources or charges as returned; failed or permission-denied collection → descriptive error with no fabricated totals. Cost Explorer reports account/service totals only, not resource-level spend. An unattached EBS volume is a review candidate, not a verified saving. Data is persisted from AWS responses and is not a continuously streaming connection; use **Collect Live AWS Data** to capture a new snapshot.
 
+## Diagnose AWS Billing 502 Errors
+
+Billing errors now identify the failed stage and safe AWS error code, without exposing AWS SDK response details.
+
+| Stage | Likely problem | Action |
+| --- | --- | --- |
+| `source_identity` / `CredentialsUnavailable` | API container has no usable AWS source credentials | Configure short-lived credentials/workload identity for the **API container**, not just the host |
+| `assume_role` / `AccessDenied` | Source principal lacks `sts:AssumeRole`, target role trust excludes principal, or External ID is missing/mismatched | Confirm both IAM caller policy and target role trust policy |
+| `assume_role` / `ExpiredToken` | AWS source session credentials are expired | Renew short-lived credentials and recreate API container |
+| `verify_identity` | Assumed role identity mismatches the account or is invalid | Verify the onboarded 12-digit account ID and IAM role ARN |
+| `cost_explorer` / `AccessDeniedException` | Assumed role cannot call Cost Explorer | Grant `ce:GetCostAndUsage`, and verify billing/Cost Explorer visibility for this AWS account |
+| `cost_explorer` / `DataUnavailableException` | Billing service has not made data available for the requested period | Verify Cost Explorer is enabled and historical billing data has had time to populate |
+
+To check the **actual source identity used by the container**, run this Bash command from the repository root:
+
+```bash
+docker compose exec -T api python -c \
+  'import boto3; s=boto3.client("sts"); i=s.get_caller_identity(); print("Source AWS account:", i["Account"]); print("Source principal:", i["Arn"])'
+```
+
+This command displays the caller ARN but does not print AWS access keys. Never paste tokens, credentials or full error logs containing secrets into issues. Then compare the source principal with the target IAM role trust policy. An STS identity check succeeds even when the principal has no authorization to assume the target role. The account configured in the dashboard is the **target account**, not necessarily the source account.
+
+A minimal target-role billing policy needs `ce:GetCostAndUsage` on `Resource: "*"`; add the documented regional EC2/RDS Describe permissions for inventory. The source identity separately needs `sts:AssumeRole` scoped to the exact target role ARN, and the target role must trust the source identity. Do not grant write privileges or attach AdministratorAccess just to make the collection work.
+
 ## Scan artifacts
 
 The dashboard displays the latest synced or locally provided artifact snapshot under `artifacts-live/`. Without a real snapshot, its data endpoints deliberately report unavailable evidence rather than inventing savings.
@@ -107,7 +131,7 @@ Restore only after stopping the API and verifying the backup's integrity and sou
 | Login returns 502 and logs show `PermissionError: /app/data/control-plane.json.tmp` | Recreate with `docker compose up -d --build`; check `docker compose logs init-data`. The initialization helper must finish successfully before the API starts. Never delete `data/control-plane.json` to fix permissions. |
 | Login rejected | Verify persisted `data/control-plane.json`; bootstrap only applies to first setup |
 | Dashboard shows unavailable scan data | Inspect `artifacts-live/`, synchronization status, and `FINOPS_OUTPUT_DIR` |
-| AWS billing/inventory 502 | Check source credentials, trust policy, target account ID and read-only IAM permissions |
+| AWS billing 502 | Read the `stage` and `aws_error_code` shown in the dashboard, then follow the AWS billing diagnostic table above |
 | API unhealthy | Inspect `docker compose logs api` and mounted directory permissions |
 | Frontend cannot reach API | Inspect `docker compose logs frontend`, loopback port mapping and Nginx proxy |
 

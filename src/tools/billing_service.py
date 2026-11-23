@@ -8,6 +8,8 @@ from __future__ import annotations
 from datetime import date, timedelta, datetime, timezone
 from decimal import Decimal, InvalidOperation
 
+from src.tools.aws_errors import aws_call
+
 
 class BillingCollectionError(RuntimeError):
     """Unsafe, incomplete, or inconsistent billing evidence."""
@@ -26,14 +28,14 @@ def collect_billing(account: dict, *, external_id: str = "", today: date | None 
     role_args = {"RoleArn": role_arn, "RoleSessionName": "FinovauntBillingReadOnly"}
     if external_id:
         role_args["ExternalId"] = external_id
-    credentials = sts.assume_role(**role_args)["Credentials"]
+    credentials = aws_call("assume_role", sts.assume_role, **role_args)["Credentials"]
     session_kwargs = {
         "aws_access_key_id": credentials["AccessKeyId"],
         "aws_secret_access_key": credentials["SecretAccessKey"],
         "aws_session_token": credentials["SessionToken"],
     }
     assumed_sts = boto3.client("sts", region_name=region, **session_kwargs)
-    if str(assumed_sts.get_caller_identity().get("Account")) != account_id:
+    if str(aws_call("verify_identity", assumed_sts.get_caller_identity).get("Account")) != account_id:
         raise BillingCollectionError("Assumed AWS identity belongs to a different account.")
 
     ce = boto3.client("ce", region_name="us-east-1", **session_kwargs)
@@ -56,7 +58,7 @@ def collect_billing(account: dict, *, external_id: str = "", today: date | None 
         params = dict(query)
         if token:
             params["NextPageToken"] = token
-        response = ce.get_cost_and_usage(**params)
+        response = aws_call("cost_explorer", ce.get_cost_and_usage, **params)
         pages += 1
         if pages > 1000:
             raise BillingCollectionError("Cost Explorer pagination limit exceeded.")
