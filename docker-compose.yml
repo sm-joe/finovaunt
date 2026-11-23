@@ -7,6 +7,7 @@ services:
     environment:
       FINOVAUNT_API_HOST: 0.0.0.0
       FINOVAUNT_API_PORT: "8787"
+      FINOVAUNT_BOOTSTRAP_PASSWORD: ${FINOVAUNT_BOOTSTRAP_PASSWORD:?Set a unique initial administrator password with at least 12 characters}
       FINOVAUNT_GITHUB_REPOSITORY: sm-joe/finovaunt
       FINOVAUNT_SCAN_WORKFLOW: finovaunt-scan.yml
       FINOPS_OUTPUT_DIR: artifacts-live
