@@ -111,3 +111,15 @@
 @media(max-width:1050px){.fv-sidebar{width:205px}.fv-main{width:calc(100% - 205px);margin-left:205px}.fv-topbar{padding:10px 17px;flex-wrap:wrap}.fv-toolbar-right{margin-left:0}.fv-primary-row,.fv-secondary-row{grid-template-columns:1fr 1fr}.fv-page{padding:20px 17px}.fv-heading{align-items:flex-start;flex-direction:column}.fv-heading-actions{width:100%}.fv-region-tag{display:none}}
 @media(max-width:740px){.fv-sidebar{width:65px;padding:17px 6px}.fv-sidebar .fv-brand{padding:0 4px 22px}.fv-sidebar .fv-brand .fv-logo{height:41px;width:41px}.fv-sidebar .fv-brand>div:last-child,.fv-nav-label,.fv-nav .nav-item span,.fv-sidebar-bottom{display:none}.fv-nav .nav-item{justify-content:center;padding:11px 7px}.fv-main{width:calc(100% - 65px);margin-left:65px}.fv-topbar{gap:8px}.fv-toolbar-left{width:100%}.fv-account-select{max-width:none;flex:1;min-width:0}.fv-toolbar-right{width:100%;justify-content:space-between}.fv-toolbar-search{flex:1;width:auto}.fv-page{padding:17px 11px}.fv-heading h1{font-size:23px}.fv-readonly{display:none}.fv-heading-actions{gap:6px}.fv-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.fv-kpi{padding:12px;min-height:122px}.fv-primary-row,.fv-secondary-row{grid-template-columns:1fr}.fv-card{padding:14px 12px}.fv-allocation-body{grid-template-columns:120px minmax(0,1fr);gap:10px}.fv-donut{width:112px;height:112px}.fv-donut>div{width:78px;height:78px}.fv-donut strong{font-size:11px}}
 @media(max-width:430px){.fv-kpi-grid{grid-template-columns:1fr 1fr}.fv-kpi>strong{font-size:16px}.fv-kpi-head{font-size:10px}.fv-account-select select{font-size:11px!important}.fv-page h1{font-size:21px}.fv-allocation-body{grid-template-columns:1fr}.fv-allocation-rows{width:100%}.fv-collector-details>summary span{display:none}}
+
+/* Override older authentication-shell sidebar positioning after removing its duplicate toolbar. */
+.fin-dashboard-content .sidebar.fv-sidebar{top:0;height:100vh;width:226px}
+.fv-shell .main.fv-main{width:calc(100% - 226px);margin-left:226px}
+@media(max-width:1050px){
+  .fin-dashboard-content .sidebar.fv-sidebar{width:205px}
+  .fv-shell .main.fv-main{width:calc(100% - 205px);margin-left:205px}
+}
+@media(max-width:740px){
+  .fin-dashboard-content .sidebar.fv-sidebar{width:65px}
+  .fv-shell .main.fv-main{width:calc(100% - 65px);margin-left:65px}
+}
