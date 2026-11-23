@@ -84,5 +84,6 @@ def test_assumed_identity_must_match_onboarded_account(monkeypatch):
     def client(name, *, region_name, **kwargs):
         return FakeSts(assumed=bool(kwargs), identity="999999999999")
     monkeypatch.setitem(sys.modules, "boto3", types.SimpleNamespace(client=client))
-    with pytest.raises(BillingCollectionError, match="different account"):
+    from src.tools.aws_errors import AWSAccessError
+    with pytest.raises(AWSAccessError, match="RoleMismatch"):
         collect_billing(ACCOUNT)
