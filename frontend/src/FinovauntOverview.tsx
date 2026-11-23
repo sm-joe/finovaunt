@@ -26,7 +26,6 @@ const shortAmount = (n: number, code: string) => {
   return new Intl.NumberFormat("en-US",{style:"currency",currency:code,notation:"compact",maximumFractionDigits:1}).format(n);
 };
 const count = (n: number | undefined) => n == null ? "—" : new Intl.NumberFormat("en-US").format(n);
-type Section = {status: string; evidence?: Record<string, unknown>};
 type CostGroup = {name: string; cost_exact: string};
 type AllocationRow = {groups?: CostGroup[]; currency?: string; status?: string};
 type AllocEvidence = {allocation?: Record<string, AllocationRow>};
