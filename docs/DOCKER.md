@@ -147,6 +147,12 @@ docker compose up -d --force-recreate api frontend
 
 This is a local-only workaround: environment credentials expire and must be refreshed with a subsequent recreate. Production deployments should use a renewing workload identity. For production, do not rely on environment credentials captured from an interactive IAM user session.
 
+## Change an onboarded collector without deleting evidence
+
+Use **Cloud account onboarding → Edit Collector** to change an existing account's display name, read-only IAM role ARN or region. Supply a reason of at least ten characters; Finovaunt records the reviewer and before/after configuration in the local audit history. This operation does **not** call AWS and never deletes billing scans, inventory snapshots, EBS history, or review notes.
+
+Changing the role or region increments a collector configuration revision. Previously collected evidence remains stored as historical records but is not shown as a live snapshot for the new configuration. Run **Collect Live AWS Data** to produce new current-scope billing and inventory evidence; account deletion remains destructive to local history. Existing `demo-user` source credentials are unchanged by account editing.
+
 ## EBS Pricing, Kubernetes PV Correlation, and Review
 
 Fresh regional inventory collects actual EBS `Size` (GiB), `VolumeType`, provisioned `Iops`, `Throughput`, creation time, tags, attachment state and identifiers. It optionally enriches **unattached volumes** with the AWS Price List `pricing:GetProducts` storage-only rate for supported `gp2`/`gp3` types. It uses `AmazonEC2`, account's AWS region, `EBS:VolumeUsage` and the verified USD `GB-Mo` OnDemand price dimension. If price data is absent or ambiguous, monthly costs are **not estimable** rather than fabricated. Storage cost is an indicative **scenario** for a full hypothetical month, not Cost Explorer resource attribution and not verified reduction.
