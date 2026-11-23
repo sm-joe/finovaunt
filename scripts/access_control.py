@@ -175,9 +175,14 @@ def get_account(account_id: str) -> dict[str, Any] | None:
     return None
 
 
-def save_billing_scan(account_id: str, result: dict[str, Any]) -> dict[str, Any]:
+def save_billing_scan(account_id: str, result: dict[str, Any], *, expected_revision: int | None = None) -> dict[str, Any]:
     with _LOCK:
         state = _read()
+        active = next((a for a in state["cloud_accounts"] if a.get("account_id") == account_id), None)
+        if active is None:
+            raise ValueError("AWS account was removed before scan evidence was saved.")
+        if expected_revision is not None and int(active.get("config_revision", 1)) != expected_revision:
+            raise ValueError("Collector configuration changed during the scan. Refresh and collect again.")
         item = {"id": secrets.token_hex(8), "account_id": account_id, "config_revision": int(next((a.get("config_revision", 1) for a in state["cloud_accounts"] if a.get("account_id") == account_id), 1)), **result}
         state.setdefault("billing_scans", []).append(item)
         state["billing_scans"] = state["billing_scans"][-100:]
@@ -225,9 +230,14 @@ def delete_account(account_id: str) -> bool:
         return True
 
 
-def save_inventory_scan(account_id: str, result: dict[str, Any]) -> dict[str, Any]:
+def save_inventory_scan(account_id: str, result: dict[str, Any], *, expected_revision: int | None = None) -> dict[str, Any]:
     with _LOCK:
         state = _read()
+        active = next((a for a in state["cloud_accounts"] if a.get("account_id") == account_id), None)
+        if active is None:
+            raise ValueError("AWS account was removed before scan evidence was saved.")
+        if expected_revision is not None and int(active.get("config_revision", 1)) != expected_revision:
+            raise ValueError("Collector configuration changed during the scan. Refresh and collect again.")
         item = {"id": secrets.token_hex(8), "account_id": account_id, "config_revision": int(next((x.get("config_revision", 1) for x in state["cloud_accounts"] if x.get("account_id") == account_id), 1)), **result}
         # Atomic with scan persistence: a scan cannot be saved without its
         # corresponding history update, and failures do not invent outcomes.
