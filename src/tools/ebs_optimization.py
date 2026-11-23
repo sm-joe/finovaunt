@@ -19,9 +19,14 @@ def _volume_id(text: str) -> str | None:
 
 
 def _is_kubernetes_volume(tags: dict) -> bool:
-    return any(key.startswith(("kubernetes.io/", "ebs.csi.aws.com/", "KubernetesCluster")) or
-               key in {"CSIVolumeName", "cluster.k8s.aws/cluster-name"} for key in tags) or
-               any("pvc-" in str(value).lower() for value in tags.values())
+    return (
+        any(
+            key.startswith(("kubernetes.io/", "ebs.csi.aws.com/", "KubernetesCluster"))
+            or key in {"CSIVolumeName", "cluster.k8s.aws/cluster-name"}
+            for key in tags
+        )
+        or any("pvc-" in str(value).lower() for value in tags.values())
+    )
 
 
 def _kubernetes_refs(tags: dict) -> dict:
