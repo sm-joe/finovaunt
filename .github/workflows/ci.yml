@@ -91,6 +91,7 @@ jobs:
     name: Validate Docker Compose Configuration
     env:
       FINOVAUNT_GITHUB_TOKEN: ${{ secrets.FINOVAUNT_GITHUB_TOKEN }}
+      FINOVAUNT_BOOTSTRAP_PASSWORD: ci-only-not-a-production-secret-2026
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
