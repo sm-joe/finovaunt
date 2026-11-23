@@ -6,10 +6,10 @@ import "./auth.css";
 import "./auth-enterprise.css";
 
 type Session = { authenticated: boolean; username?: string; must_change_password?: boolean };
-type CloudAccount = { id: string; name: string; provider: string; account_id: string; role_arn: string; region: string; status: string; created_at: string };
+type CloudAccount = { id: string; name: string; provider: string; account_id: string; role_arn: string; region: string; status: string; created_at: string; config_revision?: number };
 type InventoryAsset = { id: string; type: string; name: string; state: string; size: string; region: string; recommendation: string };
-type InventoryScan = { id: string; account_id: string; scanned_at: string; status: string; asset_count: number; truncated: boolean; assets: InventoryAsset[] };
-type BillingScan = { id: string; scanned_at: string; period_start: string; period_end_exclusive: string; total_cost: number; currency: string; services: { service: string; amount: number; currency: string }[]; status: string };
+type InventoryScan = { id: string; account_id: string; scanned_at: string; status: string; asset_count: number; truncated: boolean; config_revision?: number; assets: InventoryAsset[] };
+type BillingScan = { id: string; scanned_at: string; period_start: string; period_end_exclusive: string; total_cost: number; currency: string; services: { service: string; amount: number; currency: string }[]; status: string; config_revision?: number };
 type View = "dashboard" | "profile" | "cloud";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -293,8 +293,10 @@ function CloudView() {
       setBusy(false);
     }
   }
-  const latest = history[0];
   const active = accounts.find(account=>account.account_id===selected);
+  const currentRevision = active?.config_revision ?? 1;
+  const latest = history.find(item=>(item.config_revision ?? 1)===currentRevision);
+  const currentInventory = inventory && (inventory.config_revision ?? 1)===currentRevision?inventory:null;
   const formatted = (amount:number,unit="USD") => new Intl.NumberFormat("en-US",{style:"currency",currency:unit,maximumFractionDigits:2}).format(amount);
   return <div className="fv-cloud-workspace">
     {error&&<div className="fv-auth-message error" role="alert">{error}<button type="button" className="fv-inline-dismiss" onClick={()=>setError("")}>Dismiss</button></div>}
@@ -305,7 +307,7 @@ function CloudView() {
       <div><span>Onboarded Accounts</span><strong>{accounts.length}</strong><small>AWS accounts connected to Finovaunt</small></div>
       <div><span>Selected Region</span><strong>{active?.region||"Not selected"}</strong><small>Collector scope</small></div>
       <div><span>Latest Billing</span><strong>{latest?formatted(latest.total_cost,latest.currency):"Not collected"}</strong><small>Observed month-to-date</small></div>
-      <div><span>Last Inventory</span><strong>{inventory?inventory.asset_count.toLocaleString():"Not collected"}</strong><small>EC2, RDS and EBS assets</small></div>
+      <div><span>Last Inventory</span><strong>{currentInventory?currentInventory.asset_count.toLocaleString():"Not collected"}</strong><small>EC2, RDS and EBS assets</small></div>
     </div>
     {showOnboard&&<article className="fv-account-card">
       <div className="fv-card-headline"><Plus size={19}/><div><h2>Onboard AWS Account</h2><p>Register an existing read-only collector role.</p></div></div>
@@ -362,10 +364,10 @@ function CloudView() {
     <div className="fv-cloud-grid fv-evidence-grid">
       <section className="fv-account-card">
         <div className="fv-card-headline"><HardDrive size={19}/><div><h2>Inventory Evidence</h2><p>Latest EC2, RDS and EBS collection</p></div></div>
-        {!inventory?<div className="fv-cloud-empty"><Database size={24}/><strong>No Inventory Collected</strong><p>Collect inventory for the selected AWS region to see resources here.</p></div>:<>
-          <div className="fv-evidence-summary"><strong>{inventory.asset_count.toLocaleString()}</strong><span>Observed resources · {inventory.status}{inventory.truncated?" · Partial inventory":""}</span></div>
-          <div className="fv-evidence-table">{inventory.assets.slice(0,12).map(asset=><div key={asset.type+asset.id}><span><strong>{asset.name}</strong><small>{asset.type.toUpperCase()} · {asset.region}</small></span><span>{asset.state}</span></div>)}</div>
-          {inventory.assets.length>12&&<p className="fv-help-text">Showing 12 of {inventory.assets.length} resources. See the dashboard for details.</p>}
+        {!currentInventory?<div className="fv-cloud-empty"><Database size={24}/><strong>No Inventory Collected</strong><p>Collect inventory for the selected AWS region to see resources here.</p></div>:<>
+          <div className="fv-evidence-summary"><strong>{currentInventory.asset_count.toLocaleString()}</strong><span>Observed resources · {currentInventory.status}{currentInventory.truncated?" · Partial inventory":""}</span></div>
+          <div className="fv-evidence-table">{currentInventory.assets.slice(0,12).map(asset=><div key={asset.type+asset.id}><span><strong>{asset.name}</strong><small>{asset.type.toUpperCase()} · {asset.region}</small></span><span>{asset.state}</span></div>)}</div>
+          {currentInventory.assets.length>12&&<p className="fv-help-text">Showing 12 of {currentInventory.assets.length} resources. See the dashboard for details.</p>}
         </>}
       </section>
       <section className="fv-account-card">
