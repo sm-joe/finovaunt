@@ -109,7 +109,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if route == "/api/auth/login":
             result = access_control.login(str(body.get("username", "")), str(body.get("password", "")))
             if not result: self._json(401, {"error":"invalid_credentials","message":"Username or password is incorrect."}); return
-            self._auth_json(200, {k:v for k,v in result.items() if k != "token"}, token=result["token"])
+            self._auth_json(200, {"authenticated": True, **{k:v for k,v in result.items() if k != "token"}}, token=result["token"])
             return
         token = self._cookie_token()
         current = access_control.session(token)
@@ -119,7 +119,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if not current: self._json(401, {"error":"unauthorized","message":"Please log in."}); return
             if not access_control.change_password(token, str(body.get("current_password", "")), str(body.get("new_password", ""))):
                 self._json(400, {"error":"password_change_rejected","message":"Current password is incorrect or the new password does not meet the 12-character minimum."}); return
-            self._json(200, {"status":"password_changed"}); return
+            # Password changes invalidate every previous session. Immediately
+            # authenticate with the new secret and issue a fresh HttpOnly
+            # session cookie, so first-login rotation enters the dashboard
+            # rather than silently returning the user to the sign-in page.
+            refreshed = access_control.login(str(current["username"]), str(body.get("new_password", "")))
+            if not refreshed:
+                self._json(500, {"error": "session_refresh_failed", "message": "Password updated. Please sign in again."})
+                return
+            self._auth_json(
+                200,
+                {"status": "password_changed", "authenticated": True, "username": refreshed["username"], "must_change_password": False},
+                token=refreshed["token"],
+            )
+            return
         if not current:
             self._json(401, {"error":"unauthorized","message":"Please log in."}); return
         if current.get("must_change_password"):
