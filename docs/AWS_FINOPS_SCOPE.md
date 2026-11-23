@@ -14,7 +14,7 @@ Finovaunt is **AWS-only**. Supported service families are Cost Explorer, AWS Bud
 
 | Milestone | Delivered in initial AWS FinOps increment | Still required before complete |
 | --- | --- | --- |
-| M1 — Cost ingestion and allocation | Month-to-date Cost Explorer grouped by Team, Project and Environment tags, exact decimal amounts, unknown/unallocated visibility, persistent account-scoped evidence | CUR 2.0 / AWS Data Exports source, account/region history, hourly/daily ingestion, complete resource attribution and reconciled charges |
+| M1 — Cost ingestion and allocation | Month-to-date Cost Explorer explicitly filtered by linked account, grouped by Team, Project, Environment tags and AWS Region, exact decimals, unallocated visibility, persistent revision-scoped evidence | CUR 2.0 / AWS Data Exports source, historical region drilldowns, hourly/daily ingestion, complete resource attribution and reconciled charges |
 | M2 — Resource optimization | Read-only EC2 and RDS CPU telemetry review; existing EBS lifecycle/pricing/PV review | Memory, network, IO and utilization seasonality; attributable instance pricing; verified recommendations with savings and confidence |
 | M3 — S3 cost intelligence | S3 bucket/region/tag discovery and CloudWatch StandardStorage size telemetry | Verified bucket-level costs from CUR, all storage classes, requests/transfer, Storage Lens and lifecycle class recommendations |
 | M4 — EKS FinOps | EKS cluster inventory/status, read-only Kubernetes Metrics API namespace CPU/memory samples (RBAC permitting), and explicit absence of namespace cost attribution; existing EBS PV verification | Verified node costs and pod/request telemetry coverage, namespace/workload dollar allocation, shared cost model and accuracy acceptance |
