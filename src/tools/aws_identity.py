@@ -71,3 +71,37 @@ def resolve_aws_session(account: dict, *, external_id: str = "", session_name: s
         raise AWSAccessError("verify_identity", "RoleMismatch",
                              "Assumed role identity does not match the onboarded IAM role.")
     return kwargs, "assumed"
+
+
+def inspect_source_identity(account: dict) -> dict:
+    """Read-only diagnostics; no role assumption and never returns AWS credentials."""
+    import boto3
+    from datetime import datetime, timezone
+    account_id = str(account["account_id"])
+    role_arn = str(account["role_arn"])
+    region = str(account["region"])
+    expected = _ROLE.fullmatch(role_arn)
+    if not expected or expected.group(2) != account_id:
+        raise AWSAccessError("verify_identity", "InvalidRoleConfiguration")
+    identity = aws_call("source_identity",
+                        boto3.client("sts", region_name=region).get_caller_identity)
+    source_arn = str(identity.get("Arn", ""))
+    session = _SESSION.fullmatch(source_arn)
+    direct = bool(
+        session and session.group(1) == expected.group(1)
+        and session.group(2) == account_id
+        and session.group(3) == expected.group(3)
+        and str(identity.get("Account")) == account_id
+    )
+    return {
+        "status": "direct_role_ready" if direct else "assume_role_required",
+        "source_account_id": str(identity.get("Account", "")),
+        "source_principal_arn": source_arn,
+        "target_account_id": account_id,
+        "target_role_arn": role_arn,
+        "assume_role_required": not direct,
+        "role_assumption_verified": False,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "note": ("Current source role matches the onboarded collector role."
+                 if direct else "Source credentials exist, but target-role assumption and trust have not been tested."),
+    }
