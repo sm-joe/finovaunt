@@ -90,7 +90,7 @@ def test_inventory_respects_resource_cap(monkeypatch):
 
 def test_complete_inventory_reports_explicit_type_coverage(monkeypatch):
     def client(service, *, region_name, **kwargs):
-        return {"ec2": FakeEC2(), "rds": FakeRDS(), "sts": FakeSTS()}[service]
+        return {"ec2": FakeEC2(), "rds": FakeRDS(), "sts": FakeSTS(assumed=bool(kwargs))}[service]
     monkeypatch.setitem(sys.modules, "boto3", types.SimpleNamespace(client=client))
     result = collect_inventory(ACCOUNT)
     assert result["truncated"] is False
