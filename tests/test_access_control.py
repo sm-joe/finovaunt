@@ -123,6 +123,16 @@ def test_collector_configuration_update_preserves_history_and_requires_fresh_evi
         reviewed_by="admin",
     )
     assert updated["config_revision"] == 2
+    with pytest.raises(ValueError, match="changed during the scan"):
+        access_control.save_inventory_scan(account["account_id"], {
+            "scanned_at": "2026-11-24", "region": "us-east-1", "status": "success",
+            "assets": [],
+        }, expected_revision=1)
+    with pytest.raises(ValueError, match="changed during the scan"):
+        access_control.save_billing_scan(account["account_id"], {
+            "scanned_at": "2026-11-24", "status": "success", "total_cost": 99,
+        }, expected_revision=1)
+
     dashboard = account_dashboard(account["account_id"])
     assert dashboard["billing"] is None and dashboard["inventory"] is None
     assert dashboard["review_candidates"] == []
