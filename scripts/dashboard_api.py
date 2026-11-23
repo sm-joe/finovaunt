@@ -86,8 +86,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         route = urlparse(self.path).path.rstrip("/") or "/"
-        if route not in ("/api/auth/login", "/api/auth/logout", "/api/auth/password", "/api/cloud-accounts", "/api/billing-scans"):
-            self._json(405, {"error":"method_not_allowed","message":"This API endpoint does not accept POST requests."})
+        if route not in ("/api/auth/login", "/api/auth/logout", "/api/auth/password", "/api/cloud-accounts", "/api/billing-scans", "/api/inventory-scans"):
+            self._json(405, {"error": "method_not_allowed", "message": "This API endpoint does not accept POST requests."})
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -146,6 +146,23 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self._json(502, {
                     "error": "billing_scan_failed",
                     "message": f"AWS billing scan failed ({type(exc).__name__}). Check role trust and Cost Explorer read permissions.",
+                })
+            return
+        if route == "/api/inventory-scans":
+            account_id = str(body.get("account_id", ""))
+            account = access_control.get_account(account_id)
+            if not account:
+                self._json(404, {"error": "account_not_found", "message": "Onboard the AWS account first."})
+                return
+            try:
+                from src.tools.inventory_service import collect_inventory
+                inventory = collect_inventory(account, external_id=str(body.get("external_id", "")))
+                result = access_control.save_inventory_scan(account_id, inventory)
+                self._json(200, result)
+            except Exception as exc:
+                self._json(502, {
+                    "error": "inventory_scan_failed",
+                    "message": f"AWS inventory scan failed ({type(exc).__name__}). Verify IAM read permissions and role trust.",
                 })
             return
         self._json(405, {"error":"method_not_allowed","message":"This API endpoint does not accept POST requests."})
@@ -215,6 +232,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if not current: self._json(401, {"error":"unauthorized","message":"Please log in."}); return
             if current.get("must_change_password"): self._json(403, {"error":"password_change_required","message":"Change the default password before continuing."}); return
             self._json(200, {"items":access_control.list_accounts()}); return
+        if route.startswith("/api/inventory-scans/"):
+            current = access_control.session(self._cookie_token())
+            if not current:
+                self._json(401, {"error": "unauthorized", "message": "Please log in."})
+                return
+            if current.get("must_change_password"):
+                self._json(403, {"error": "password_change_required", "message": "Change your password first."})
+                return
+            account_id = route.removeprefix("/api/inventory-scans/")
+            if not re.fullmatch(r"[0-9]{12}", account_id):
+                self._json(404, {"error": "not_found", "message": "Cloud account not found."})
+                return
+            self._json(200, {"latest": access_control.latest_inventory_scan(account_id)})
+            return
         if route.startswith("/api/billing-scans/"):
             current = access_control.session(self._cookie_token())
             if not current: self._json(401, {"error":"unauthorized","message":"Please log in."}); return

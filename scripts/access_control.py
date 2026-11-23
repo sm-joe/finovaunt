@@ -31,7 +31,7 @@ def _read() -> dict[str, Any]:
                 "Set FINOVAUNT_BOOTSTRAP_PASSWORD (at least 12 characters) "
                 "before starting a new Finovaunt installation."
             )
-        state = {"user": {"username": "admin", "password": _hash(bootstrap_password), "must_change_password": True}, "cloud_accounts": [], "billing_scans": []}
+        state = {"user": {"username": "admin", "password": _hash(bootstrap_password), "must_change_password": True}, "cloud_accounts": [], "billing_scans": [], "inventory_scans": []}
         _write(state)
         return state
     try:
@@ -39,6 +39,7 @@ def _read() -> dict[str, Any]:
         if not isinstance(data, dict) or not isinstance(data.get("user"), dict) or not isinstance(data.get("cloud_accounts"), list):
             raise ValueError("invalid control state")
         data.setdefault("billing_scans", [])
+        data.setdefault("inventory_scans", [])
         return data
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         raise RuntimeError("Finovaunt control-plane state is unreadable; refusing to reset credentials or account records.") from exc
@@ -154,5 +155,28 @@ def delete_account(account_id: str) -> bool:
             item for item in state.get("billing_scans", [])
             if item.get("account_id") != account_id
         ]
+        state["inventory_scans"] = [
+            item for item in state.get("inventory_scans", [])
+            if item.get("account_id") != account_id
+        ]
         _write(state)
         return True
+
+
+def save_inventory_scan(account_id: str, result: dict[str, Any]) -> dict[str, Any]:
+    with _LOCK:
+        state = _read()
+        item = {"id": secrets.token_hex(8), "account_id": account_id, **result}
+        state.setdefault("inventory_scans", []).append(item)
+        state["inventory_scans"] = state["inventory_scans"][-30:]
+        _write(state)
+        return item
+
+
+def latest_inventory_scan(account_id: str) -> dict[str, Any] | None:
+    with _LOCK:
+        matches = [
+            item for item in _read().get("inventory_scans", [])
+            if item.get("account_id") == account_id
+        ]
+        return matches[-1] if matches else None
