@@ -6,6 +6,8 @@ create a Git branch, commit, push, or apply Terraform.
 from __future__ import annotations
 
 import os
+import json
+from datetime import datetime, timezone
 from pathlib import Path
 import re
 import sys
@@ -25,6 +27,7 @@ _GENERATED_FILES = {
     "cost_evidence.json",
     "cost_history.json",
     "manifest.json",
+    "scan_status.json",
 }
 
 
@@ -67,6 +70,32 @@ def main() -> int:
     state: dict = {"run_id": uuid.uuid4().hex[:12], "events": []}
     collected = collect_data(state)
     state.update(collected)
+    # A verified empty inventory is not an infrastructure error. Record it
+    # explicitly without manufacturing resources, proposals, or savings.
+    warnings = state.get("collection_warnings", [])
+    empty_inventory = (
+        os.getenv("FINOPS_DISCOVERY_MODE", "mock").strip().lower() == "aws"
+        and not state.get("metrics")
+        and any("No running EC2 or RDS instances were discovered" in str(w) for w in warnings)
+        and state.get("status") == "collection_failed"
+    )
+    if empty_inventory:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "scan_status.json").write_text(
+            json.dumps({
+                "schema_version": 1,
+                "run_id": state["run_id"],
+                "status": "empty_inventory",
+                "scanned_at": datetime.now(timezone.utc).isoformat(),
+                "recommendations": 0,
+                "estimated_monthly_savings_usd": 0,
+                "warnings": warnings,
+            }, indent=2),
+            encoding="utf-8",
+        )
+        print("Read-only scan completed: empty inventory; no optimization proposals.")
+        return 0
+
     if state.get("validation_error") or state.get("status") == "collection_failed":
         print("ERROR: collection failed; no proposal artifacts written.", file=sys.stderr)
         # collect_data sanitizes validation_error before returning it. Print the
