@@ -25,7 +25,7 @@ class FakeSts:
         return {"Credentials": {"AccessKeyId": "fake", "SecretAccessKey": "fake", "SessionToken": "fake"}}
 
     def get_caller_identity(self):
-        return {"Account": self.identity}
+        return {"Account": self.identity, "Arn": (f"arn:aws:sts::{self.identity}:assumed-role/FinovauntReadOnly/test" if self.assumed else f"arn:aws:iam::{self.identity}:user/source") }
 
 
 class FakeCe:
