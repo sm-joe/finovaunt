@@ -131,7 +131,21 @@ function CloudView() {
       setInventory(result);
       setMessage(`Inventory complete: ${result.asset_count} assets. No AWS resources were modified.`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Inventory scan failed.");
+      // The reverse proxy may close a slow request after AWS inventory was
+      // saved. Read the latest persisted snapshot before reporting a failure.
+      try {
+        const saved = await request<{ latest: InventoryScan | null }>(
+          `/api/inventory-scans/${encodeURIComponent(selected)}`
+        );
+        if (saved.latest) {
+          setInventory(saved.latest);
+          setMessage(`Latest stored inventory: ${saved.latest.asset_count} assets. If the collection connection timed out, check the snapshot timestamp before retrying.`);
+        } else {
+          setError(e instanceof Error ? e.message : "Inventory scan failed.");
+        }
+      } catch {
+        setError(e instanceof Error ? e.message : "Inventory scan failed.");
+      }
     } finally { setBusy(false); }
   }
   async function onboard(e: FormEvent) { e.preventDefault(); setBusy(true); setError(""); setMessage(""); try { const created = await request<CloudAccount>("/api/cloud-accounts", { method: "POST", body: JSON.stringify({ name, provider: "aws", account_id: accountId, role_arn: roleArn, region, external_id: externalId }) }); setAccounts(old => [...old, created]); setSelected(created.account_id); setName(""); setAccountId(""); setRoleArn(""); setMessage("AWS account onboarded. Keep the external ID available if the role trust policy requires it for billing scans."); } catch (e) { setError(e instanceof Error ? e.message : "Account onboarding failed."); } finally { setBusy(false); } }
