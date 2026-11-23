@@ -20,12 +20,9 @@ No stable public v1.0.0 release has been declared. Development branches and func
 - Cost Explorer account totals are contextual billing data. Do not report them as resource-level cost attribution or verified savings.
 - Keep `.env`, `data/`, scan artifacts, and AWS credentials out of public repositories and container images.
 
-## Temporary CI development mode
+## Required CI security gates
 
-At the product owner's request, automated dependency/security scans and Docker image builds are temporarily disabled on PRs and pushes while product functionality is developed. Backend tests, frontend build, and Compose configuration validation remain active. This is **not a security approval or permanent waiver**.
+Security checking is restored on pull requests and main pushes. The required workflow includes secret scanning, Python/Node dependency audits, Trivy Dockerfile and filesystem/IaC checks, plus actual API/dashboard Docker image builds. The previously vulnerable `certifi` lock was upgraded to a PyPI-verified November 2026 release.
 
-Before any stable release, restore and pass secret scanning, dependency audits (including remediation of the identified vulnerable `certifi` pin), container and filesystem/IaC scans, runtime image builds, and deployment verification. Do not label a release production ready based on development CI alone.
+A passing CI pipeline does not by itself establish safe production deployment: strong CSRF controls, rate limiting, TLS reverse proxy configuration, rotation of runtime AWS credentials, EKS RBAC verification, clean upgrades and independent runtime acceptance remain important. No automated AWS or Kubernetes resource deletion is supported.
 
-## Deployment recommendations
-
-Prefer a private network or authenticated reverse proxy, a secure TLS configuration, a dedicated read-only IAM role, durable encrypted backups of local state, filesystem isolation, monitoring, and documented restoration tests. Self-hosted installations should remain bound to loopback unless these protections are implemented and validated.
