@@ -18,7 +18,7 @@ def account_dashboard(account_id: str) -> dict | None:
     current_billing = [scan for scan in billing_history if int(scan.get("config_revision", 1)) == revision]
     latest_billing = current_billing[-1] if current_billing else None
     inventory_scan = access_control.latest_inventory_scan(account_id)
-    latest_inventory = inventory_scan if inventory_scan and int(inventory_scan.get("config_revision", 1)) == revision and inventory_scan.get("region") == account.get("region") else None
+    latest_inventory = inventory_scan if inventory_scan and int(inventory_scan.get("config_revision", 1)) == revision and inventory_scan.get("region", account.get("region")) == account.get("region") else None
     assets = list(latest_inventory.get("assets", [])) if latest_inventory else []
 
     # Savings are scenario estimates from verified AWS Price List rates,
