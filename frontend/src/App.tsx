@@ -16,7 +16,6 @@ type AwsSourceStatus = { status: "direct_role_ready" | "assume_role_required"; s
 type Review = { id: string; inventory_scan_id: string; resource_id: string; decision: string; note: string; reviewed_by: string; reviewed_at: string; infrastructure_applied: false };
 type Dashboard = { source: "aws_collected"; account: Account; billing: Billing | null; inventory: Inventory | null; billing_history: History[]; review_candidates: Candidate[]; ebs_reviews: Review[]; optimization_history: HistoricEbs[]; potential_ebs_savings_usd?: string | null; ebs_price_coverage?: {priced_candidates:number; total_candidates:number}; estimated_savings: null; realized_savings: null; billing_status: string; inventory_status: string };
 type Tab = "Overview" | "Assets" | "Cost Breakdown" | "AWS FinOps" | "Review Candidates" | "Scan History";
-const tabs: Tab[] = ["Overview", "Assets", "Cost Breakdown", "AWS FinOps", "Review Candidates", "Scan History"];
 
 function formatMoney(amount: number | null | undefined, currency?: string) {
   if (amount == null || !Number.isFinite(amount)) return "Not available";
@@ -214,7 +213,7 @@ export default function App({ onOpenCloud, onOpenProfile, onSignOut, username }:
         {accountId && !loading && noEvidence && !error && <section className="panel" style={{marginBottom: 20}}><h2>No AWS Data Collected Yet</h2><p>This account has been onboarded, but neither Cost Explorer nor inventory collection has completed. Click <strong>Collect Live AWS Data</strong> after configuring the API container's AWS credentials. No spend or resource count is assumed.</p></section>}
         {data && <div style={{marginBottom: 15,fontSize: 13,opacity: .8}}>Account: {data.account.account_id} · Region: {data.account.region} · Billing: {billing ? formatTime(billing.scanned_at) : "Not collected"} · Inventory: {inventory ? formatTime(inventory.scanned_at) : "Not collected"}{lastRefresh ? " · Dashboard refreshed " + formatTime(lastRefresh) : ""}</div>}
         {tab === "Overview" && <FinovauntOverview
-          billing={billing} history={data?.billing_history||[]} inventory={inventory}
+          billing={billing||null} history={data?.billing_history||[]} inventory={inventory||null}
           candidates={data?.review_candidates||[]} finops={finops}
           potentialStorageSavings={data?.potential_ebs_savings_usd||null}
           reviewedCount={data?.ebs_reviews?.length||0}
