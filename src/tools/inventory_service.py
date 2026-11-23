@@ -6,7 +6,8 @@ resource descriptions alone. An empty inventory is a valid observation.
 from __future__ import annotations
 from datetime import datetime, timezone
 
-from src.tools.aws_errors import aws_call, aws_pages
+from src.tools.aws_errors import aws_pages
+from src.tools.aws_identity import resolve_aws_session
 
 
 class InventoryCollectionError(RuntimeError):
@@ -23,18 +24,9 @@ def collect_inventory(account: dict, *, external_id: str = "", max_assets: int =
     if not role_arn.startswith(f"arn:aws:iam::{account_id}:role/"):
         raise InventoryCollectionError("IAM role does not belong to the onboarded account.")
 
-    sts = boto3.client("sts", region_name=region)
-    assume = {"RoleArn": role_arn, "RoleSessionName": "FinovauntInventoryReadOnly"}
-    if external_id:
-        assume["ExternalId"] = external_id
-    credentials = aws_call("assume_role", sts.assume_role, **assume)["Credentials"]
-    session_kwargs = {
-        "aws_access_key_id": credentials["AccessKeyId"],
-        "aws_secret_access_key": credentials["SecretAccessKey"],
-        "aws_session_token": credentials["SessionToken"],
-    }
-    if str(aws_call("verify_identity", boto3.client("sts", region_name=region, **session_kwargs).get_caller_identity).get("Account")) != account_id:
-        raise InventoryCollectionError("Assumed AWS account identity does not match onboarding.")
+    session_kwargs, identity_mode = resolve_aws_session(
+        account, external_id=external_id, session_name="FinovauntInventoryReadOnly"
+    )
 
     ec2 = boto3.client("ec2", region_name=region, **session_kwargs)
     rds = boto3.client("rds", region_name=region, **session_kwargs)
@@ -128,6 +120,7 @@ def collect_inventory(account: dict, *, external_id: str = "", max_assets: int =
                 }
     return {
         "optimization_collection": optimization,
+        "aws_auth_mode": identity_mode,
         "account_id": account_id,
         "region": region,
         "scanned_at": datetime.now(timezone.utc).isoformat(),

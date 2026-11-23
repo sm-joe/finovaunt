@@ -44,7 +44,7 @@ The `init-data` one-shot service runs before the API, adjusts ownership of `./da
 
 ## Using AWS
 
-AWS billing and inventory scans need a source AWS credential chain in the API runtime that can call `sts:AssumeRole` on each onboarded role. The container does **not** automatically inherit your host `~/.aws` credentials.
+AWS billing and inventory scans use the boto3 credential provider chain from the API runtime. When the current principal is the **same IAM role as the onboarded role**, Finovaunt uses the available workload credentials directly and **does not** call `sts:AssumeRole` again. When the source role and target role differ, it explicitly assumes the target role and verifies the result. The container does **not** automatically inherit your host `~/.aws` credentials.
 
 Prefer deploying the API on a host/orchestrator that supplies a short-lived workload identity, rather than baking AWS keys into an image or embedding them in the UI. The onboarded target IAM role must permit the necessary read-only actions:
 
@@ -52,7 +52,7 @@ Prefer deploying the API on a host/orchestrator that supplies a short-lived work
 - `ce:GetCostAndUsage` for Cost Explorer billing
 - `ec2:DescribeInstances` and `ec2:DescribeVolumes`
 - `rds:DescribeDBInstances`
-- The source identity must be trusted by the target role for `sts:AssumeRole`
+- For access to a different IAM role, the source identity must be trusted by the target role for `sts:AssumeRole`. No AssumeRole permission is required for direct use of the identical role.
 
 The GitHub Actions OIDC scanner uses its own configured AWS role and region; it is not automatically connected to every dashboard-onboarded account. Do not conflate these two collection paths.
 
@@ -62,7 +62,7 @@ The primary dashboard now reads **actual Cost Explorer and regional EC2/RDS/EBS 
 
 1. Log in and complete the initial password rotation.
 2. Open **Cloud Accounts → Onboard AWS account**. Provide the 12-digit account ID, a trusted read-only IAM role ARN in the target account, and the AWS region. Account onboarding does not by itself mean AWS access is working.
-3. Supply an AWS **source credential chain** to the API container. The source identity must be able to call `sts:AssumeRole` on the target role; configure the target role's trust policy accordingly. The target role must allow `ce:GetCostAndUsage`, `ec2:DescribeInstances`, `ec2:DescribeVolumes`, and `rds:DescribeDBInstances`. If the role requires an External ID, enter it when collecting; the UI does not persist it.
+3. Provide an AWS **workload credential chain** to the API container (EC2 instance profile, ECS task role or EKS Pod Identity). For direct mode, configure the onboarded IAM role ARN to match the role actually assigned to that workload; Finovaunt does not chain AssumeRole into the same role. If collecting via a different role, configure the trust policy and assume-role permission. The target role must allow `ce:GetCostAndUsage`, `ec2:DescribeInstances`, `ec2:DescribeVolumes`, and `rds:DescribeDBInstances`. If the role requires an External ID, enter it when collecting; the UI does not persist it.
 4. Return to **Dashboard**, select the account, and click **Collect Live AWS Data**. Billing and inventory collect independently. The dashboard shows the last successful AWS responses and their timestamps; missing or failed collections remain explicitly unavailable.
 
 For temporary local development, pass **short-lived** AWS session credentials exported in your Bash environment to Docker Compose:
@@ -101,6 +101,12 @@ docker compose exec -T api python -c \
 This command displays the caller ARN but does not print AWS access keys. Never paste tokens, credentials or full error logs containing secrets into issues. Then compare the source principal with the target IAM role trust policy. An STS identity check succeeds even when the principal has no authorization to assume the target role. The account configured in the dashboard is the **target account**, not necessarily the source account.
 
 A minimal target-role billing policy needs `ce:GetCostAndUsage` on `Resource: "*"`; add the documented regional EC2/RDS Describe permissions for inventory. The source identity separately needs `sts:AssumeRole` scoped to the exact target role ARN, and the target role must trust the source identity. Do not grant write privileges or attach AdministratorAccess just to make the collection work.
+
+## Dedicated IAM workload execution (no IAM user required)
+
+Finovaunt accepts AWS-provided, auto-rotating credentials via the standard boto3 provider chain. Assign the **same role as the onboarded role** to the host EC2 instance profile, ECS task, or EKS pod identity. That role needs read-only EC2/EBS/RDS, Cost Explorer, AWS Pricing, and EKS Describe permissions (Kubernetes PV RBAC is separate). A source IAM user and self-assume role trust entry are **not** required. The API response records `aws_auth_mode: direct` for this case. Other accounts/roles retain the explicit cross-role assume flow (`aws_auth_mode: assumed`). No new keys are created or stored in Finovaunt.
+
+**Docker Compose caveat:** Local Docker is not an AWS identity provider. Workload-role credential delivery must be configured in AWS (e.g. ECS task role or EC2 instance profile with accessible IMDS); do not export a short-lived `assumed-role` session into Compose and expect auto-renewal. Static `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` environment variables override workload credentials if provided; remove old injected keys when moving to an IAM-role runtime. AWS identity is checked on each collection; a role of the same **account** but a different **role name** cannot bypass cross-role trust.
 
 ## Recover source AWS authorization after a Docker restart
 

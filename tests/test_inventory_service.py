@@ -43,20 +43,23 @@ class FakeRDS:
 
 
 class FakeSTS:
-    def __init__(self, mismatch=False):
+    def __init__(self, mismatch=False, assumed=False):
         self.mismatch = mismatch
+        self.assumed = assumed
 
     def assume_role(self, **kwargs):
         return {"Credentials": {"AccessKeyId": "fake", "SecretAccessKey": "fake", "SessionToken": "fake"}}
 
     def get_caller_identity(self):
-        return {"Account": "999999999999" if self.mismatch else "123456789012"}
+        account = "999999999999" if self.mismatch else "123456789012"
+        arn = (f"arn:aws:sts::{account}:assumed-role/ReadOnly/test" if self.assumed else f"arn:aws:iam::{account}:user/source")
+        return {"Account": account, "Arn": arn}
 
 
 def test_inventory_detects_ec2_rds_ebs_without_savings(monkeypatch):
     def client(service, *, region_name, **kwargs):
         assert region_name == "eu-central-1"
-        return {"ec2": FakeEC2(), "rds": FakeRDS(), "sts": FakeSTS()}[service]
+        return {"ec2": FakeEC2(), "rds": FakeRDS(), "sts": FakeSTS(assumed=bool(kwargs))}[service]
     monkeypatch.setitem(sys.modules, "boto3", types.SimpleNamespace(client=client))
     result = collect_inventory(ACCOUNT)
     assert result["asset_count"] == 3
@@ -73,7 +76,7 @@ def test_inventory_rejects_wrong_account_role():
 
 def test_inventory_respects_resource_cap(monkeypatch):
     def client(service, *, region_name, **kwargs):
-        return {"ec2": FakeEC2(), "rds": FakeRDS(), "sts": FakeSTS()}[service]
+        return {"ec2": FakeEC2(), "rds": FakeRDS(), "sts": FakeSTS(assumed=bool(kwargs))}[service]
     monkeypatch.setitem(sys.modules, "boto3", types.SimpleNamespace(client=client))
     result = collect_inventory(ACCOUNT, max_assets=1)
     assert result["asset_count"] == 1
@@ -87,7 +90,7 @@ def test_inventory_respects_resource_cap(monkeypatch):
 
 def test_complete_inventory_reports_explicit_type_coverage(monkeypatch):
     def client(service, *, region_name, **kwargs):
-        return {"ec2": FakeEC2(), "rds": FakeRDS(), "sts": FakeSTS()}[service]
+        return {"ec2": FakeEC2(), "rds": FakeRDS(), "sts": FakeSTS(assumed=bool(kwargs))}[service]
     monkeypatch.setitem(sys.modules, "boto3", types.SimpleNamespace(client=client))
     result = collect_inventory(ACCOUNT)
     assert result["truncated"] is False
