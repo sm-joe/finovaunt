@@ -271,7 +271,6 @@ function CloudView() {
       const results=await request<{items:CloudAccount[]}>("/api/cloud-accounts");
       setAccounts(results.items);
       await loadHistory(target);
-      await loadInventory(target);
     } catch(err) {setError(err instanceof Error?err.message:"Unable to update collector.");}
     finally{setBusy(false);}
   }
@@ -286,6 +285,7 @@ function CloudView() {
       setAccounts(remaining);
       setSelected(remaining[0]?.account_id || "");
       setHistory([]);
+      setInventory(null);
       setMessage("AWS account and locally saved billing history removed. AWS resources were not changed.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not remove cloud account.");
@@ -324,7 +324,7 @@ function CloudView() {
         {accounts.length===0?<div className="fv-cloud-empty"><Cloud size={29}/><strong>No AWS accounts connected</strong><p>Connect an account to begin collecting AWS billing and inventory evidence.</p><button className="fv-outline-button" onClick={()=>setShowOnboard(true)}>Add Your First Account <ArrowRight size={15}/></button></div>:
         <div className="fv-account-list">{accounts.map(account=><button type="button" key={account.account_id}
           className={"fv-account-list-item"+(selected===account.account_id?" selected":"")} aria-pressed={selected===account.account_id}
-          onClick={()=>{setSelected(account.account_id);setEditing(null);setError("");setMessage("");}}>
+          onClick={()=>{setSelected(account.account_id);setInventory(null);setHistory([]);setEditing(null);setError("");setMessage("");}}>
           <span className="fv-provider-symbol"><Layers3 size={19}/></span><span className="fv-account-list-info"><strong>{account.name}</strong><small>{account.account_id} · {account.region}</small></span>
           {selected===account.account_id?<CircleCheck size={17} className="fv-selected-icon"/>:<ArrowRight size={16}/>}
         </button>)}</div>}
