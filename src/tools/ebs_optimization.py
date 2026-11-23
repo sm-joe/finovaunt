@@ -6,12 +6,10 @@ as an actionable or verified saving. No automatic AWS/Kubernetes writes.
 from __future__ import annotations
 
 import base64
-from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 import json
 import re
 import urllib.request
-from urllib.error import HTTPError, URLError
 from botocore.signers import RequestSigner
 
 
@@ -68,7 +66,7 @@ def _prices(pricing, region: str, volume_types: set[str]) -> dict[str, dict]:
                     or attrs.get("regionCode") != region):
                     continue
                 usage = attrs.get("usagetype", "")
-                if not re.search(r"EBS:VolumeUsage(?:\\.|$)", usage):
+                if not re.search(r"EBS:VolumeUsage(?:\.|$)", usage):
                     continue
                 for term in obj.get("terms", {}).get("OnDemand", {}).values():
                     for dimension in term.get("priceDimensions", {}).values():
