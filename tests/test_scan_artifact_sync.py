@@ -75,3 +75,53 @@ def test_same_run_marker_does_not_skip_sync_when_evidence_is_missing(tmp_path, m
     assert result["status"] == "synced"
     assert (tmp_path / "cost_evidence.json").is_file()
     assert json.loads((tmp_path / "cost_evidence.json").read_text(encoding="utf-8"))["run_id"] == "scan-123"
+
+
+def test_empty_inventory_artifact_replaces_stale_scan_evidence(tmp_path, monkeypatch):
+    old = tmp_path / "cost_evidence.json"
+    old.write_text(json.dumps({"run_id": "old", "resources": [{"resource_id": "old-resource"}]}))
+    record = {
+        "schema_version": 1,
+        "run_id": "empty-123",
+        "status": "empty_inventory",
+        "scanned_at": "2026-11-23T00:00:00Z",
+        "recommendations": 0,
+        "estimated_monthly_savings_usd": 0,
+        "warnings": ["No running EC2 or RDS instances were discovered."],
+    }
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("scan_status.json", json.dumps(record))
+    content = buffer.getvalue()
+
+    def fake_json_request(url, token):
+        if "/actions/workflows/" in url:
+            return {"workflow_runs": [{"id": 1234, "html_url": "https://github.com/sm-joe/finovaunt/actions/runs/1234"}]}
+        if url.endswith("/actions/runs/1234/artifacts?per_page=100"):
+            return {"artifacts": [{"id": 1235, "name": "finovaunt-scan", "expired": False}]}
+        raise AssertionError(url)
+
+    monkeypatch.setattr(module, "_json_request", fake_json_request)
+    monkeypatch.setattr(module, "_request", lambda *args, **kwargs: content)
+    result = module.sync_latest_scan(
+        tmp_path, token="test-token", repository="sm-joe/finovaunt", workflow="finovaunt-scan.yml"
+    )
+    assert result["scan_status"] == "empty_inventory"
+    assert json.loads((tmp_path / "scan_status.json").read_text())["run_id"] == "empty-123"
+    assert not old.exists()
+    assert json.loads((tmp_path / ".finovaunt-sync.json").read_text())["scan_run_id"] == "empty-123"
+
+
+def test_rejects_invalid_empty_inventory_artifact():
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("scan_status.json", json.dumps({
+            "schema_version": 1, "run_id": "invalid", "status": "empty_inventory",
+            "recommendations": 1, "estimated_monthly_savings_usd": 999,
+        }))
+    try:
+        module._validated_files(buffer.getvalue())
+    except module.SyncError:
+        pass
+    else:
+        raise AssertionError("An empty scan must never contain invented savings")
