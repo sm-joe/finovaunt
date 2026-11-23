@@ -36,6 +36,10 @@ type Resource = {
   data_quality_warnings?: string[];
 };
 type Collection<T> = { count: number; items: T[] };
+type RecommendationDecision = {
+  id: string; run_id: string; resource_id: string; decision: "approved" | "rejected";
+  note: string; reviewed_by: string; reviewed_at: string; infrastructure_applied: false;
+};
 type Scan = { run_id: string; generated_at?: string | null; resource_count?: number; action_counts?: Record<string, number>; realized_savings?: { status?: string; amount_usd?: number | null } };
 
 const money = (value?: number | null, currency = "USD") =>
@@ -79,23 +83,31 @@ export default function App() {
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [decisions, setDecisions] = useState<RecommendationDecision[]>([]);
+  const [reviewResource, setReviewResource] = useState("");
+  const [reviewNote, setReviewNote] = useState("");
+  const [reviewAction, setReviewAction] = useState<"approved" | "rejected">("approved");
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewMessage, setReviewMessage] = useState("");
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const [health, summary, opportunityData, assetData, scanData] = await Promise.all([
+      const [health, summary, opportunityData, assetData, scanData, decisionData] = await Promise.all([
         getJSON<{ status: string }>("/api/health"),
         getJSON<Overview>("/api/overview"),
         getJSON<Collection<Resource>>("/api/opportunities"),
         getJSON<Collection<Resource>>("/api/assets"),
         getJSON<Collection<Scan>>("/api/scans"),
+        getJSON<{ items: RecommendationDecision[] }>("/api/recommendation-decisions"),
       ]);
       setApiOnline(health.status === "ok");
       setOverview(summary);
       setOpportunities(opportunityData.items ?? []);
       setAssets(assetData.items ?? []);
       setScans([...(scanData.items ?? [])].reverse());
+      setDecisions(decisionData.items ?? []);
       setLastRefresh(new Date());
     } catch (err) {
       setApiOnline(false);
@@ -115,6 +127,32 @@ export default function App() {
     [item.name, item.resource_id, item.resource_type, item.region, item.recommendation?.action]
       .some((part) => (part || "").toLowerCase().includes(query.toLowerCase()))
   ), [opportunities, query]);
+
+  async function submitReview(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!overview?.run_id || !reviewResource || reviewNote.trim().length < 10) return;
+    setReviewBusy(true); setReviewMessage("");
+    try {
+      const response = await fetch("/api/recommendation-decisions", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          run_id: overview.run_id,
+          resource_id: reviewResource,
+          decision: reviewAction,
+          note: reviewNote.trim(),
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof body.message === "string" ? body.message : "Review not saved.");
+      setDecisions(old => [...old, body as RecommendationDecision]);
+      setReviewNote("");
+      setReviewMessage("Review saved to the audit history. No AWS changes were made.");
+    } catch (error) {
+      setReviewMessage(error instanceof Error ? error.message : "Review failed.");
+    } finally { setReviewBusy(false); }
+  }
 
   const simulated = (overview?.simulated_monthly_savings_usd ?? 0) > 0 ||
     overview?.data_source === "mock";
@@ -205,6 +243,36 @@ export default function App() {
             <PanelHeading eyebrow="OPTIMIZATION QUEUE" title={`${opportunities.length} opportunities`} icon={Sparkles} />
             <Search value={query} onChange={setQuery} placeholder="Search resources or actions…" />
             <OpportunityTable rows={filteredOpportunities} />
+            <div className="context-note"><ShieldCheck size={16}/><span>Approving a recommendation records a human review only. Finovaunt never applies Terraform or changes AWS resources.</span></div>
+            <form onSubmit={event => void submitReview(event)} className="fin-settings-form" style={{marginTop: 24, display: "grid", gap: 12, maxWidth: 620}}>
+              <h3>Review a Recommendation</h3>
+              <label>Resource
+                <select value={reviewResource} onChange={event => setReviewResource(event.target.value)} required>
+                  <option value="">Select an opportunity</option>
+                  {opportunities.map(item => <option value={item.resource_id} key={item.resource_id}>{item.name} · {item.region}</option>)}
+                </select>
+              </label>
+              <label>Decision
+                <select value={reviewAction} onChange={event => setReviewAction(event.target.value as "approved" | "rejected")}>
+                  <option value="approved">Approve for Human-Managed Proposal</option>
+                  <option value="rejected">Reject</option>
+                </select>
+              </label>
+              <label>Review Note
+                <textarea value={reviewNote} onChange={event => setReviewNote(event.target.value)} minLength={10} maxLength={2000} rows={3} placeholder="Record your evidence and rationale (at least 10 characters)" required />
+              </label>
+              <button className="primary-button" disabled={reviewBusy || !overview?.run_id || !reviewResource || reviewNote.trim().length < 10}>{reviewBusy ? "Saving Review…" : "Save Review"}</button>
+              {reviewMessage && <p role="status">{reviewMessage}</p>}
+            </form>
+            <div style={{marginTop: 18}}>
+              <h3>Decision History</h3>
+              {decisions.filter(item => item.run_id === overview?.run_id).length === 0
+                ? <EmptyState text="No human decisions have been recorded for this scan." />
+                : <div className="table-scroll"><table><thead><tr><th>Resource</th><th>Decision</th><th>Reviewed By</th><th>Date</th><th>Note</th></tr></thead><tbody>
+                  {[...decisions].filter(item => item.run_id === overview?.run_id).reverse().map(item =>
+                    <tr key={item.id}><td><code>{item.resource_id}</code></td><td><span className={`pill ${item.decision === "approved" ? "green" : "amber"}`}>{titleCase(item.decision)}</span></td><td>{item.reviewed_by}</td><td>{date(item.reviewed_at)}</td><td>{item.note}</td></tr>)}
+                </tbody></table></div>}
+            </div>
           </section>}
 
           {tab === "Assets" && <section className="panel table-panel">
