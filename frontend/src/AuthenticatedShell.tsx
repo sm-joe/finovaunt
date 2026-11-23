@@ -82,7 +82,7 @@ export default function AuthenticatedShell() {
         <button onClick={() => void logout()} disabled={busy}><LogOut size={15}/> Sign out</button>
       </div>
     </div>
-    {view === "dashboard" ? <div className="fin-dashboard-content"><App /></div> : <div className="fin-settings-wrap"><button className="fin-back" onClick={() => setView("dashboard")}><ArrowLeft size={15}/> Back to dashboard</button>{view === "profile" ? <ProfileView username={session.username || "admin"} onPasswordChanged={loadSession} /> : <CloudView />}</div>}
+    {view === "dashboard" ? <div className="fin-dashboard-content"><App onOpenCloud={() => setView("cloud")} /></div> : <div className="fin-settings-wrap"><button className="fin-back" onClick={() => setView("dashboard")}><ArrowLeft size={15}/> Back to dashboard</button>{view === "profile" ? <ProfileView username={session.username || "admin"} onPasswordChanged={loadSession} /> : <CloudView />}</div>}
     {error && <div className="fin-toast" role="alert">{error}<button onClick={() => setError("")}>Dismiss</button></div>}
   </>;
 }

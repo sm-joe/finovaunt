@@ -83,7 +83,7 @@ export default function AccessGate() {
     <label>Username<input autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required /></label>
     <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
     <button className="access-primary" type="submit">Sign in</button>
-    <small className="access-hint">Initial credentials: admin / admin. You must change the password at first login.</small>
+    <small className="access-hint">Initial username: admin. Use the administrator bootstrap password set during deployment.</small>
   </form></div>;
 
   if (session.must_change_password) return <div className="access-screen"><form className="access-card" onSubmit={submitPassword}>
@@ -103,6 +103,6 @@ export default function AccessGate() {
     </form>}
     <section className="access-account-panel"><h2>Connected cloud accounts <span>{accounts.length}</span></h2>{accounts.length === 0 ? <p>No cloud accounts onboarded yet. Add an AWS account to run a billing scan.</p> : accounts.map((account) => <div className="access-account" key={account.id}><div><strong>{account.name}</strong><small>{account.account_id} · {account.region}</small><small>{account.role_arn}</small><input aria-label={`External ID for ${account.name}`} value={scanExternalIds[account.account_id] || ""} onChange={(e) => setScanExternalIds((previous) => ({ ...previous, [account.account_id]: e.target.value }))} placeholder="External ID (only if required)" /></div><button disabled={!!scanning} onClick={() => void runBillingScan(account.account_id)}>{scanning === account.account_id ? "Scanning…" : "Scan billing"}</button></div>)}</section>
     {latestScan && <section className="access-account-panel"><h2>Billing scan result</h2><p>{latestScan.period_start} to {latestScan.period_end_exclusive} · {new Date(latestScan.scanned_at).toLocaleString()}</p><div className="access-total">{new Intl.NumberFormat("en-US", { style: "currency", currency: latestScan.currency || "USD" }).format(latestScan.total_cost)} <small>month-to-date service costs</small></div><div className="access-services">{latestScan.services.map((service) => <div key={service.service}><span>{service.service}</span><strong>{new Intl.NumberFormat("en-US", { style: "currency", currency: service.currency || "USD" }).format(service.amount)}</strong></div>)}</div></section>}
-    <div className="access-dashboard"><div className="access-dashboard-heading"><strong>Cost intelligence dashboard</strong><span>Existing dashboard below is unchanged.</span></div><App /></div>
+    <div className="access-dashboard"><div className="access-dashboard-heading"><strong>Cost intelligence dashboard</strong><span>Existing dashboard below is unchanged.</span></div><App onOpenCloud={() => setShowOnboarding(true)} /></div>
   </div>;
 }

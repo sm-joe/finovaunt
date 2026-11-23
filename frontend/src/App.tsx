@@ -1,326 +1,140 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
-import {
-  Activity, AlertCircle, ArrowUpRight, Boxes, CheckCircle2,
-  CircleDollarSign, Clock3, Cloud, Database, Gauge, Layers3, RefreshCw,
-  ShieldCheck, Sparkles, TrendingDown, Wallet,
-} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Activity, AlertCircle, ArrowUpRight, Boxes, Cloud, CircleDollarSign, Database, RefreshCw, ShieldCheck, Wallet } from "lucide-react";
 
-type Overview = {
-  generated_at?: string | null;
-  run_id?: string | null;
-  data_source?: string;
-  currency?: string;
-  cloud_spend?: {
-    status?: string; amount?: number | null; currency?: string;
-    period_start?: string | null; period_end_exclusive?: string | null;
-    scope?: string; resource_attribution?: string;
-  };
-  potential_monthly_savings_usd?: number;
-  simulated_monthly_savings_usd?: number;
-  realized_savings?: { status?: string; amount_usd?: number | null };
-  resources_scanned?: number;
-  opportunities?: number;
-  resources_without_estimable_savings?: number;
-  action_counts?: Record<string, number>;
-  risk_counts?: Record<string, number>;
-  scan_count?: number;
-};
-type Resource = {
-  resource_id: string; name: string; provider: string; resource_type: string;
-  region: string; environment: string; production_critical: boolean;
-  utilization?: { avg_cpu_percent?: number | null; peak_cpu_percent?: number | null; avg_memory_percent?: number | null };
-  cost?: { status?: string; amount?: number | null; currency?: string; monthly_cost_usd?: number | null; source?: string };
-  recommendation?: { action?: string; rationale?: string | null; risk?: string; requires_human_approval?: boolean; proposed_instance_type?: string | null; optimization_confidence?: string; missing_evidence?: string[] };
-  savings?: { estimated_monthly_usd?: number | null; basis?: string; classification?: string; realized_status?: string; realized_monthly_usd?: number | null; assumptions?: string[] };
-  data_quality_warnings?: string[];
-};
-type Collection<T> = { count: number; items: T[] };
-type RecommendationDecision = {
-  id: string; run_id: string; resource_id: string; decision: "approved" | "rejected";
-  note: string; reviewed_by: string; reviewed_at: string; infrastructure_applied: false;
-};
-type Scan = { run_id: string; generated_at?: string | null; resource_count?: number; action_counts?: Record<string, number>; realized_savings?: { status?: string; amount_usd?: number | null } };
+type Account = { id: string; account_id: string; name: string; provider: string; role_arn: string; region: string; status: string };
+type ServiceCost = { service: string; amount: number; amount_exact?: string; currency: string };
+type Billing = { id: string; scanned_at: string; status: string; total_cost: number; total_cost_exact?: string; currency: string; period_start: string; period_end_exclusive: string; services: ServiceCost[]; is_final: boolean };
+type Asset = { id: string; type: string; name: string; state: string; size: string; region: string; recommendation: string; cost_status: string };
+type Inventory = { id: string; scanned_at: string; status: string; region: string; asset_count: number; truncated: boolean; assets: Asset[] };
+type History = { id: string; scanned_at: string; period_start: string; total_cost: number; currency: string; status: string };
+type Candidate = { resource_id: string; name: string; type: string; region: string; reason: string; estimated_monthly_savings: null; action: string };
+type Dashboard = { source: "aws_collected"; account: Account; billing: Billing | null; inventory: Inventory | null; billing_history: History[]; review_candidates: Candidate[]; estimated_savings: null; realized_savings: null; billing_status: string; inventory_status: string };
+type Tab = "Overview" | "Assets" | "Cost Breakdown" | "Review Candidates" | "Scan History";
+const tabs: Tab[] = ["Overview", "Assets", "Cost Breakdown", "Review Candidates", "Scan History"];
 
-const money = (value?: number | null, currency = "USD") =>
-  value == null || !Number.isFinite(value)
-    ? "—"
-    : new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(value);
-const date = (value?: string | null) => {
-  if (!value) return "Timestamp unavailable";
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
-};
-const titleCase = (value?: string) =>
-  (value || "unknown").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-
-async function getJSON<T>(path: string): Promise<T> {
-  const response = await fetch(path, { headers: { Accept: "application/json" } });
+function formatMoney(amount: number | null | undefined, currency?: string) {
+  if (amount == null || !Number.isFinite(amount)) return "Not available";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: currency || "USD", maximumFractionDigits: 2 }).format(amount);
+}
+function formatTime(value?: string) {
+  if (!value) return "Not collected";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, {
+    credentials: "same-origin",
+    headers: { Accept: "application/json", ...(init?.body ? { "Content-Type": "application/json" } : {}) },
+    ...init,
+  });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const message = body && typeof body.message === "string" ? body.message : `Request failed (${response.status})`;
-    throw new Error(message);
-  }
+  if (!response.ok) throw new Error(typeof body.message === "string" ? body.message : "Request failed (" + response.status + ")");
   return body as T;
 }
+function Empty({ children }: { children: React.ReactNode }) {
+  return <div className="empty-state" style={{ padding: 28, textAlign: "center" }}>{children}</div>;
+}
+function Metric({ label, value, detail, Icon }: { label: string; value: string; detail: string; Icon: typeof Wallet }) {
+  return <article className="metric-card"><div className="metric-icon"><Icon size={19}/></div><span>{label}</span><strong style={{display: "block",fontSize: 27,margin: "9px 0"}}>{value}</strong><small>{detail}</small></article>;
+}
 
-type Tab = "Overview" | "Opportunities" | "Assets" | "Scan History";
-const tabs: { label: Tab; icon: typeof Gauge }[] = [
-  { label: "Overview", icon: Gauge },
-  { label: "Opportunities", icon: Sparkles },
-  { label: "Assets", icon: Boxes },
-  { label: "Scan History", icon: Activity },
-];
-
-export default function App() {
+export default function App({ onOpenCloud }: { onOpenCloud: () => void }) {
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [accountId, setAccountId] = useState("");
+  const [data, setData] = useState<Dashboard | null>(null);
   const [tab, setTab] = useState<Tab>("Overview");
-  const [overview, setOverview] = useState<Overview | null>(null);
-  const [opportunities, setOpportunities] = useState<Resource[]>([]);
-  const [assets, setAssets] = useState<Resource[]>([]);
-  const [scans, setScans] = useState<Scan[]>([]);
-  const [apiOnline, setApiOnline] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [scanning, setScanning] = useState(false);
   const [error, setError] = useState("");
-  const [query, setQuery] = useState("");
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
-  const [decisions, setDecisions] = useState<RecommendationDecision[]>([]);
-  const [reviewResource, setReviewResource] = useState("");
-  const [reviewNote, setReviewNote] = useState("");
-  const [reviewAction, setReviewAction] = useState<"approved" | "rejected">("approved");
-  const [reviewBusy, setReviewBusy] = useState(false);
-  const [reviewMessage, setReviewMessage] = useState("");
+  const [scanErrors, setScanErrors] = useState<string[]>([]);
+  const [externalId, setExternalId] = useState("");
+  const [lastRefresh, setLastRefresh] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  const loadAccounts = useCallback(async () => {
     try {
-      const [health, summary, opportunityData, assetData, scanData, decisionData] = await Promise.all([
-        getJSON<{ status: string }>("/api/health"),
-        getJSON<Overview>("/api/overview"),
-        getJSON<Collection<Resource>>("/api/opportunities"),
-        getJSON<Collection<Resource>>("/api/assets"),
-        getJSON<Collection<Scan>>("/api/scans"),
-        getJSON<{ items: RecommendationDecision[] }>("/api/recommendation-decisions"),
-      ]);
-      setApiOnline(health.status === "ok");
-      setOverview(summary);
-      setOpportunities(opportunityData.items ?? []);
-      setAssets(assetData.items ?? []);
-      setScans([...(scanData.items ?? [])].reverse());
-      setDecisions(decisionData.items ?? []);
-      setLastRefresh(new Date());
-    } catch (err) {
-      setApiOnline(false);
-      setError(err instanceof Error ? err.message : "Could not load dashboard data.");
-    } finally {
-      setLoading(false);
-    }
+      const response = await request<{items: Account[]}>("/api/cloud-accounts");
+      setAccounts(response.items);
+      setAccountId(current => response.items.some(a => a.account_id === current) ? current : (response.items[0]?.account_id || ""));
+    } catch (err) { setError(err instanceof Error ? err.message : "Unable to load cloud accounts."); }
   }, []);
 
-  useEffect(() => { void refresh(); }, [refresh]);
-
-  const filteredAssets = useMemo(() => assets.filter((item) =>
-    [item.name, item.resource_id, item.resource_type, item.region, item.environment]
-      .some((part) => (part || "").toLowerCase().includes(query.toLowerCase()))
-  ), [assets, query]);
-  const filteredOpportunities = useMemo(() => opportunities.filter((item) =>
-    [item.name, item.resource_id, item.resource_type, item.region, item.recommendation?.action]
-      .some((part) => (part || "").toLowerCase().includes(query.toLowerCase()))
-  ), [opportunities, query]);
-
-  async function submitReview(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!overview?.run_id || !reviewResource || reviewNote.trim().length < 10) return;
-    setReviewBusy(true); setReviewMessage("");
+  const loadDashboard = useCallback(async (id: string) => {
+    if (!id) { setData(null); setLoading(false); return; }
+    setLoading(true); setError("");
     try {
-      const response = await fetch("/api/recommendation-decisions", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({
-          run_id: overview.run_id,
-          resource_id: reviewResource,
-          decision: reviewAction,
-          note: reviewNote.trim(),
-        }),
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(typeof body.message === "string" ? body.message : "Review not saved.");
-      setDecisions(old => [...old, body as RecommendationDecision]);
-      setReviewNote("");
-      setReviewMessage("Review saved to the audit history. No AWS changes were made.");
-    } catch (error) {
-      setReviewMessage(error instanceof Error ? error.message : "Review failed.");
-    } finally { setReviewBusy(false); }
+      const response = await request<Dashboard>("/api/live-dashboard?account_id=" + encodeURIComponent(id));
+      setData(response); setLastRefresh(new Date().toISOString());
+    } catch (err) {
+      setData(null);
+      setError(err instanceof Error ? err.message : "Unable to load AWS data.");
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { void loadAccounts(); }, [loadAccounts]);
+  useEffect(() => { void loadDashboard(accountId); }, [accountId, loadDashboard]);
+
+  async function collectAWS() {
+    if (!accountId || scanning) return;
+    setScanning(true); setScanErrors([]); setError("");
+    const result = await Promise.allSettled([
+      request("/api/billing-scans", { method: "POST", body: JSON.stringify({ account_id: accountId, external_id: externalId }) }),
+      request("/api/inventory-scans", { method: "POST", body: JSON.stringify({ account_id: accountId, external_id: externalId }) }),
+    ]);
+    const failures = result.flatMap((item, index) => item.status === "rejected" ?
+      [(index === 0 ? "Cost Explorer: " : "Inventory: ") + (item.reason instanceof Error ? item.reason.message : "AWS request failed")] : []);
+    setScanErrors(failures);
+    await loadDashboard(accountId);
+    setScanning(false);
   }
 
-  const simulated = (overview?.simulated_monthly_savings_usd ?? 0) > 0 ||
-    overview?.data_source === "mock";
+  const billing = data?.billing;
+  const inventory = data?.inventory;
+  const noEvidence = !billing && !inventory;
 
-  return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-symbol"><TrendingDown size={21} /></div>
-          <div><strong>finovaunt</strong><span>Autonomous FinOps</span></div>
-        </div>
-        <div className="workspace-label">WORKSPACE</div>
-        <nav className="nav-list" aria-label="Dashboard sections">
-          {tabs.map(({ label, icon: Icon }) => (
-            <button key={label} className={`nav-item ${tab === label ? "active" : ""}`} onClick={() => { setTab(label); setQuery(""); }}>
-              <Icon size={17} strokeWidth={1.8} /><span>{label}</span>
-              {label === "Opportunities" && opportunities.length > 0 && <span className="nav-count">{opportunities.length}</span>}
-            </button>
-          ))}
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="security-note"><ShieldCheck size={17} /><div><strong>Guardrails Active</strong><span>Read-only Dashboard</span></div></div>
-          <span className="version">FINOVAUNT · MVP</span>
-        </div>
-      </aside>
-
-      <main className="main">
-        <header className="topbar">
-          <div className="breadcrumb"><span>Finovaunt</span><span className="slash">/</span><strong>{tab}</strong></div>
-          <div className="topbar-actions">
-            <span className={`api-state ${apiOnline ? "online" : "offline"}`}><i />{apiOnline ? "API Connected" : "API Unavailable"}</span>
-            <button className="icon-button" onClick={() => void refresh()} disabled={loading} aria-label="Refresh dashboard" title="Refresh data"><RefreshCw size={16} className={loading ? "spin" : ""} /></button>
-            <div className="avatar">F</div>
+  return <div className="app-shell">
+    <aside className="sidebar">
+      <div className="brand"><div className="brand-symbol"><Cloud size={21}/></div><div><strong>finovaunt</strong><span>AWS Cost Intelligence</span></div></div>
+      <div className="workspace-label">LIVE AWS WORKSPACE</div>
+      <nav className="nav-list" aria-label="Dashboard sections">
+        {tabs.map(label => <button key={label} className={"nav-item " + (tab === label ? "active" : "")} onClick={() => setTab(label)}><Activity size={17}/><span>{label}</span></button>)}
+      </nav>
+      <div className="sidebar-bottom"><div className="security-note"><ShieldCheck size={17}/><div><strong>Read-only Access</strong><span>No AWS mutations or synthetic data</span></div></div><span className="version">FINOVAUNT · AWS</span></div>
+    </aside>
+    <main className="main">
+      <header className="topbar"><div className="breadcrumb"><span>Finovaunt</span><span className="slash">/</span><strong>{tab}</strong></div><div className="topbar-actions"><span className="api-state online"><i/>Live AWS Evidence</span><button className="icon-button" onClick={() => void loadDashboard(accountId)} disabled={!accountId || loading} title="Reload collected results"><RefreshCw size={16}/></button></div></header>
+      <div className="page-content">
+        <section className="page-heading"><div><div className="eyebrow">AWS ACCOUNT INTELLIGENCE</div><h1>{tab === "Overview" ? "Cloud Cost Overview" : tab}</h1><p>Observed Cost Explorer billing and regional EC2, RDS, and EBS resources. No sample or fabricated data.</p></div><button className="primary-button" onClick={onOpenCloud}><Cloud size={16}/> Manage AWS Accounts</button></section>
+        <section className="panel" style={{marginBottom: 18}}>
+          {accounts.length === 0 ? <><h2>Connect Your First AWS Account</h2><p>Onboard a read-only IAM role, then collect actual billing and inventory evidence. No mock data is loaded.</p><button className="primary-button" onClick={onOpenCloud}><ArrowUpRight size={16}/> Onboard AWS Account</button></> :
+          <div style={{display: "flex",gap: 16,alignItems: "end",flexWrap: "wrap"}}>
+            <label style={{flex: "1 1 260px"}}>Onboarded AWS Account<select value={accountId} onChange={e => {setAccountId(e.target.value);setScanErrors([]);setExternalId("");}}>{accounts.map(a => <option key={a.account_id} value={a.account_id}>{a.name} · {a.account_id} · {a.region}</option>)}</select></label>
+            <label style={{flex: "1 1 220px"}}>IAM External ID (only if role requires it)<input type="password" autoComplete="off" value={externalId} onChange={e => setExternalId(e.target.value)} placeholder="Not saved"/></label>
+            <button className="primary-button" onClick={() => void collectAWS()} disabled={scanning || !accountId}><RefreshCw size={16}/>{scanning ? "Collecting from AWS…" : "Collect Live AWS Data"}</button>
+          </div>}
+        </section>
+        {error && <div className="error-banner" role="alert"><AlertCircle size={18}/><div><strong>Unable to Load Account Data</strong><span>{error}</span></div></div>}
+        {scanErrors.map(message => <div key={message} className="error-banner" role="alert"><AlertCircle size={18}/><div><strong>AWS Collection Failed</strong><span>{message}</span><small>Verify the source AWS credential chain, sts:AssumeRole trust, External ID, and read-only permissions.</small></div></div>)}
+        {loading && <p role="status">Loading persisted AWS evidence…</p>}
+        {accountId && !loading && noEvidence && !error && <section className="panel" style={{marginBottom: 20}}><h2>No AWS Data Collected Yet</h2><p>This account has been onboarded, but neither Cost Explorer nor inventory collection has completed. Click <strong>Collect Live AWS Data</strong> after configuring the API container's AWS credentials. No spend or resource count is assumed.</p></section>}
+        {data && <div style={{marginBottom: 15,fontSize: 13,opacity: .8}}>Account: {data.account.account_id} · Region: {data.account.region} · Billing: {billing ? formatTime(billing.scanned_at) : "Not collected"} · Inventory: {inventory ? formatTime(inventory.scanned_at) : "Not collected"}{lastRefresh ? " · Dashboard refreshed " + formatTime(lastRefresh) : ""}</div>}
+        {tab === "Overview" && <>
+          <div className="metric-grid">
+            <Metric Icon={Wallet} label="Month-to-Date Cloud Spend" value={formatMoney(billing?.total_cost, billing?.currency)} detail={billing ? billing.period_start + " to " + billing.period_end_exclusive + " (provisional)" : "Cost Explorer not collected"}/>
+            <Metric Icon={Boxes} label="Observed Resources" value={inventory ? String(inventory.asset_count) : "Not available"} detail={inventory ? inventory.region + (inventory.truncated ? " · Partial inventory" : " · EC2, RDS, EBS") : "Inventory not collected"}/>
+            <Metric Icon={Activity} label="Review Candidates" value={inventory ? String(data?.review_candidates.length ?? 0) : "Not available"} detail="Unattached EBS only; human review required"/>
+            <Metric Icon={CircleDollarSign} label="Verified Savings" value="Not available" detail="No verified cost attribution or realized savings"/>
           </div>
-        </header>
-
-        <div className="page-content">
-          <section className="page-heading">
-            <div><div className="eyebrow">COST INTELLIGENCE</div><h1>{tab === "Overview" ? "Cloud Cost Overview" : tab}</h1>
-              <p>{tab === "Overview" ? "Understand spend, surface optimization opportunities, and track scan evidence." :
-                tab === "Opportunities" ? "Prioritized recommendations with transparent evidence and risk." :
-                tab === "Assets" ? "Discovered cloud resources and their cost and utilization evidence." :
-                "Review scan snapshots and their available evidence."}</p>
-            </div>
-            <button className="primary-button" onClick={() => void refresh()} disabled={loading}><RefreshCw size={15} /> Refresh data</button>
-          </section>
-
-          {error && <div className="error-banner"><AlertCircle size={18} /><div><strong>Dashboard data unavailable</strong><span>{error}</span><small>Confirm the Python API is running and FINOPS_OUTPUT_DIR points to a directory containing cost_evidence.json.</small></div><button onClick={() => void refresh()}>Retry</button></div>}
-          {simulated && overview && <div className="simulation-banner"><Sparkles size={16} /><span><strong>Simulation data</strong> — mock-mode estimates are illustrative, not live recommendations or verified savings.</span></div>}
-
-          {tab === "Overview" && <>
-            <div className="metric-grid">
-              <Metric icon={Wallet} label="Account Cloud Spend" value={money(overview?.cloud_spend?.amount, overview?.cloud_spend?.currency)} note={overview?.cloud_spend?.status ? titleCase(overview.cloud_spend.status) : "Billing context unavailable"} tone="blue" />
-              <Metric icon={CircleDollarSign} label="Potential Monthly Savings" value={money(overview?.potential_monthly_savings_usd)} note="Resource-cost evidence only" tone="green" />
-              <Metric icon={Sparkles} label="Simulated Savings" value={money(overview?.simulated_monthly_savings_usd)} note="Excluded from potential savings" tone="purple" />
-              <Metric icon={Boxes} label="Resources Scanned" value={overview?.resources_scanned?.toLocaleString() ?? "—"} note={`${overview?.opportunities ?? 0} optimization opportunities`} tone="amber" />
-            </div>
-
-            <div className="content-grid">
-              <section className="panel spend-panel">
-                <PanelHeading eyebrow="SCAN SNAPSHOT" title="Latest Cost Intelligence" icon={Activity} />
-                <div className="snapshot-row"><span>Data Source</span><strong>{titleCase(overview?.data_source)}</strong></div>
-                <div className="snapshot-row"><span>Last Generated</span><strong>{date(overview?.generated_at)}</strong></div>
-                <div className="snapshot-row"><span>Run ID</span><code>{overview?.run_id || "—"}</code></div>
-                <div className="snapshot-row"><span>Scans in History</span><strong>{overview?.scan_count ?? scans.length}</strong></div>
-                <div className="snapshot-row"><span>Resources without Estimable Savings</span><strong>{overview?.resources_without_estimable_savings ?? 0}</strong></div>
-                <div className="context-note"><Database size={16} /><span>Account-level billing is contextual only and is not attributed to individual resources.</span></div>
-              </section>
-              <section className="panel">
-                <PanelHeading eyebrow="OPTIMIZATION PIPELINE" title="Recommendation Mix" icon={Layers3} />
-                {Object.entries(overview?.action_counts ?? {}).length === 0
-                  ? <EmptyState text="No recommendation counts are available in this snapshot." />
-                  : <div className="mix-list">{Object.entries(overview?.action_counts ?? {}).sort((a,b) => b[1]-a[1]).map(([action,count]) => {
-                    const total = Math.max(1, overview?.resources_scanned ?? 1);
-                    return <div className="mix-row" key={action}><div className="mix-label"><span>{titleCase(action)}</span><strong>{count}</strong></div><div className="bar-track"><div className="bar-fill" style={{width: `${Math.min(100, count / total * 100)}%`}} /></div></div>;
-                  })}</div>}
-                <div className="realized-box"><div className="realized-icon"><CheckCircle2 size={17} /></div><div><strong>Realized Savings</strong><span>Not verified — requires post-change measurement</span></div><b>—</b></div>
-              </section>
-            </div>
-
-            <section className="panel table-panel">
-              <PanelHeading eyebrow="TOP OPPORTUNITIES" title="Evidence-Led Recommendations" icon={Sparkles} action={<button className="text-button" onClick={() => setTab("Opportunities")}>View all <ArrowUpRight size={14} /></button>} />
-              <OpportunityTable rows={opportunities.slice(0,5)} />
-            </section>
-          </>}
-
-          {tab === "Opportunities" && <section className="panel table-panel">
-            <PanelHeading eyebrow="OPTIMIZATION QUEUE" title={`${opportunities.length} opportunities`} icon={Sparkles} />
-            <Search value={query} onChange={setQuery} placeholder="Search resources or actions…" />
-            <OpportunityTable rows={filteredOpportunities} />
-            <div className="context-note"><ShieldCheck size={16}/><span>Approving a recommendation records a human review only. Finovaunt never applies Terraform or changes AWS resources.</span></div>
-            <form onSubmit={event => void submitReview(event)} className="fin-settings-form" style={{marginTop: 24, display: "grid", gap: 12, maxWidth: 620}}>
-              <h3>Review a Recommendation</h3>
-              <label>Resource
-                <select value={reviewResource} onChange={event => setReviewResource(event.target.value)} required>
-                  <option value="">Select an opportunity</option>
-                  {opportunities.map(item => <option value={item.resource_id} key={item.resource_id}>{item.name} · {item.region}</option>)}
-                </select>
-              </label>
-              <label>Decision
-                <select value={reviewAction} onChange={event => setReviewAction(event.target.value as "approved" | "rejected")}>
-                  <option value="approved">Approve for Human-Managed Proposal</option>
-                  <option value="rejected">Reject</option>
-                </select>
-              </label>
-              <label>Review Note
-                <textarea value={reviewNote} onChange={event => setReviewNote(event.target.value)} minLength={10} maxLength={2000} rows={3} placeholder="Record your evidence and rationale (at least 10 characters)" required />
-              </label>
-              <button className="primary-button" disabled={reviewBusy || !overview?.run_id || !reviewResource || reviewNote.trim().length < 10}>{reviewBusy ? "Saving Review…" : "Save Review"}</button>
-              {reviewMessage && <p role="status">{reviewMessage}</p>}
-            </form>
-            <div style={{marginTop: 18}}>
-              <h3>Decision History</h3>
-              {decisions.filter(item => item.run_id === overview?.run_id).length === 0
-                ? <EmptyState text="No human decisions have been recorded for this scan." />
-                : <div className="table-scroll"><table><thead><tr><th>Resource</th><th>Decision</th><th>Reviewed By</th><th>Date</th><th>Note</th></tr></thead><tbody>
-                  {[...decisions].filter(item => item.run_id === overview?.run_id).reverse().map(item =>
-                    <tr key={item.id}><td><code>{item.resource_id}</code></td><td><span className={`pill ${item.decision === "approved" ? "green" : "amber"}`}>{titleCase(item.decision)}</span></td><td>{item.reviewed_by}</td><td>{date(item.reviewed_at)}</td><td>{item.note}</td></tr>)}
-                </tbody></table></div>}
-            </div>
-          </section>}
-
-          {tab === "Assets" && <section className="panel table-panel">
-            <PanelHeading eyebrow="RESOURCE INVENTORY" title={`${assets.length} resources`} icon={Boxes} />
-            <Search value={query} onChange={setQuery} placeholder="Search name, type, region, environment…" />
-            {filteredAssets.length === 0 ? <EmptyState text="No matching resources in the current snapshot." /> :
-              <div className="table-scroll"><table><thead><tr><th>Resource</th><th>Type / Region</th><th>Environment</th><th>Monthly cost</th><th>Avg CPU</th><th>Action</th></tr></thead><tbody>
-                {filteredAssets.map((item) => <tr key={`${item.provider}:${item.resource_id}`}><td><strong>{item.name}</strong><small className="subline">{item.resource_id}</small></td><td>{titleCase(item.resource_type)}<small className="subline">{item.region}</small></td><td><span className="pill neutral">{titleCase(item.environment)}</span>{item.production_critical && <small className="subline danger-text">Production critical</small>}</td><td>{money(item.cost?.monthly_cost_usd)}</td><td>{item.utilization?.avg_cpu_percent == null ? "—" : `${item.utilization.avg_cpu_percent.toFixed(1)}%`}</td><td><span className={`pill ${riskTone(item.recommendation?.risk)}`}>{titleCase(item.recommendation?.action)}</span></td></tr>)}
-              </tbody></table></div>}
-          </section>}
-
-          {tab === "Scan History" && <section className="panel table-panel">
-            <PanelHeading eyebrow="AUDITABLE RUNS" title="Scan History" icon={Clock3} />
-            {scans.length === 0 ? <EmptyState text="No scan history is available in this artifact snapshot." /> :
-              <div className="table-scroll"><table><thead><tr><th>Run</th><th>Generated</th><th>Resources</th><th>Recommendations</th><th>Realized Savings</th></tr></thead><tbody>
-                {scans.map((scan) => <tr key={scan.run_id}><td><code>{scan.run_id}</code></td><td>{date(scan.generated_at)}</td><td>{scan.resource_count ?? 0}</td><td>{Object.entries(scan.action_counts ?? {}).filter(([key]) => !["no_change","not_proposed"].includes(key)).reduce((sum,[,n])=>sum+n,0)}</td><td><span className="pill neutral">{titleCase(scan.realized_savings?.status || "not_verified")}</span></td></tr>)}
-              </tbody></table></div>}
-          </section>}
-
-          <footer className="footer"><span>Finovaunt · Autonomous FinOps</span><span>{lastRefresh ? `Updated ${lastRefresh.toLocaleTimeString()}` : "Waiting for data"} · Refresh is read-only</span></footer>
-        </div>
-      </main>
-    </div>
-  );
-}
-
-function Metric({icon: Icon, label, value, note, tone}: {icon: typeof Gauge; label:string; value:string; note:string; tone:string}) {
-  return <article className="metric-card"><div className={`metric-icon ${tone}`}><Icon size={18} /></div><span className="metric-label">{label}</span><strong className="metric-value">{value}</strong><span className="metric-note">{note}</span></article>;
-}
-function PanelHeading({eyebrow,title,icon:Icon,action}: {eyebrow:string; title:string; icon:typeof Gauge; action?:ReactNode}) {
-  return <div className="panel-heading"><div className="panel-heading-icon"><Icon size={17}/></div><div className="panel-title"><span className="eyebrow">{eyebrow}</span><h2>{title}</h2></div>{action && <div className="panel-action">{action}</div>}</div>;
-}
-function OpportunityTable({rows}: {rows:Resource[]}) {
-  if (!rows.length) return <EmptyState text="No optimization opportunities are present in this snapshot." />;
-  return <div className="table-scroll"><table><thead><tr><th>Resource</th><th>Recommendation</th><th>Risk / confidence</th><th>Potential / month</th><th>Evidence</th></tr></thead><tbody>
-    {rows.map((item) => <tr key={`${item.provider}:${item.resource_id}`}><td><strong>{item.name}</strong><small className="subline">{item.resource_type} · {item.region}</small></td><td><span className="pill blue">{titleCase(item.recommendation?.action)}</span><small className="subline rationale">{item.recommendation?.rationale || "No rationale supplied."}</small></td><td><span className={`pill ${riskTone(item.recommendation?.risk)}`}>{titleCase(item.recommendation?.risk)} risk</span><small className="subline">Confidence: {titleCase(item.recommendation?.optimization_confidence)}</small></td><td><strong>{money(item.savings?.estimated_monthly_usd)}</strong><small className="subline">{item.savings?.classification === "simulated_estimate" ? "Simulated estimate" : item.savings?.classification === "estimated_from_monthly_resource_cost" ? "Resource cost evidence" : "Not estimable"}</small></td><td>{(item.recommendation?.missing_evidence?.length ?? 0) > 0 ? <span className="pill amber">{item.recommendation?.missing_evidence?.length} gaps</span> : <span className="pill green">Evidence reviewed</span>}{item.recommendation?.requires_human_approval && <small className="subline">Human approval required</small>}</td></tr>)}
-  </tbody></table></div>;
-}
-function Search({value,onChange,placeholder}: {value:string; onChange:(value:string)=>void; placeholder:string}) {
-  return <div className="search-row"><input value={value} onChange={(event)=>onChange(event.target.value)} placeholder={placeholder} aria-label={placeholder}/><span>{value ? "Filtered results" : "All current results"}</span></div>;
-}
-function EmptyState({text}: {text:string}) {
-  return <div className="empty-state"><div className="empty-symbol"><Cloud size={20}/></div><p>{text}</p></div>;
-}
-function riskTone(risk?:string) {
-  const normalized = (risk || "").toLowerCase();
-  if (normalized.includes("high") || normalized.includes("critical")) return "red";
-  if (normalized.includes("medium") || normalized.includes("moderate")) return "amber";
-  if (normalized.includes("low")) return "green";
-  return "neutral";
+          <div className="content-grid">
+            <section className="panel"><h2>Cost Explorer Spend by Service</h2>{billing ? billing.services.length ? <div className="fin-service-list">{[...billing.services].sort((a,b) => b.amount - a.amount).slice(0, 12).map(s => <div key={s.service}><span>{s.service}</span><strong>{formatMoney(s.amount, s.currency)}</strong></div>)}</div> : <Empty>Cost Explorer returned no service charges for this period.</Empty> : <Empty>Collect AWS billing to show real spend by service.</Empty>}</section>
+            <section className="panel"><h2>Collection Evidence</h2><div className="snapshot-row"><span>Billing Source</span><strong>{billing ? "AWS Cost Explorer" : "Not collected"}</strong></div><div className="snapshot-row"><span>Inventory Source</span><strong>{inventory ? "EC2 / RDS / EBS APIs" : "Not collected"}</strong></div><div className="snapshot-row"><span>Collection Scope</span><strong>{inventory?.region || data?.account.region || "—"}</strong></div><div className="snapshot-row"><span>Inventory Completeness</span><strong>{inventory ? (inventory.truncated ? "Truncated" : "Complete for queried services / region") : "Unknown"}</strong></div><p className="context-note"><Database size={16}/> Service-level spend is not attributable to individual resources without additional AWS billing evidence. No savings are inferred.</p></section>
+          </div>
+        </>}
+        {tab === "Assets" && <section className="panel table-panel"><h2>Observed AWS Resources</h2>{inventory ? inventory.assets.length ? <div className="table-scroll"><table><thead><tr><th>Resource</th><th>Type</th><th>State</th><th>Size</th><th>Region</th><th>Monthly Cost</th></tr></thead><tbody>{inventory.assets.map(a => <tr key={a.type + a.id}><td><strong>{a.name}</strong><small className="subline">{a.id}</small></td><td>{a.type.toUpperCase()}</td><td>{a.state}</td><td>{a.size}</td><td>{a.region}</td><td>Not attributed</td></tr>)}</tbody></table></div> : <Empty>AWS returned zero EC2, RDS, or EBS resources in the selected region.</Empty> : <Empty>Inventory not collected. Run an AWS collection to list actual resources.</Empty>}</section>}
+        {tab === "Cost Breakdown" && <section className="panel table-panel"><h2>Account-Level Billing · Cost Explorer</h2>{billing ? <><p>Unblended cost from {billing.period_start} through {billing.period_end_exclusive} (exclusive). Current month values are provisional.</p><div className="table-scroll"><table><thead><tr><th>AWS Service</th><th>Observed Spend</th><th>Currency</th></tr></thead><tbody>{[...billing.services].sort((a,b) => b.amount - a.amount).map(s => <tr key={s.service}><td>{s.service}</td><td>{formatMoney(s.amount, s.currency)}</td><td>{s.currency}</td></tr>)}</tbody></table></div></> : <Empty>No Cost Explorer billing collected for this account.</Empty>}</section>}
+        {tab === "Review Candidates" && <section className="panel table-panel"><h2>Review-Only Optimization Candidates</h2><p>Unattached EBS volumes are surfaced for human investigation; no price or savings estimate is claimed.</p>{inventory ? data?.review_candidates.length ? <div className="table-scroll"><table><thead><tr><th>Resource</th><th>Region</th><th>Review Reason</th><th>Estimated Savings</th></tr></thead><tbody>{data.review_candidates.map(c => <tr key={c.resource_id}><td><strong>{c.name}</strong><small className="subline">{c.resource_id}</small></td><td>{c.region}</td><td>{c.reason}</td><td>Not estimable</td></tr>)}</tbody></table></div> : <Empty>No unattached EBS volumes identified in the collected regional inventory.</Empty> : <Empty>Collect regional inventory before assessing resources.</Empty>}</section>}
+        {tab === "Scan History" && <section className="panel table-panel"><h2>Persisted AWS Collection History</h2>{data?.billing_history.length ? <div className="table-scroll"><table><thead><tr><th>Collected At</th><th>Month</th><th>Month-to-Date Spend</th><th>Status</th></tr></thead><tbody>{[...data.billing_history].reverse().map(s => <tr key={s.id}><td>{formatTime(s.scanned_at)}</td><td>{s.period_start}</td><td>{formatMoney(s.total_cost,s.currency)}</td><td>{s.status}</td></tr>)}</tbody></table></div> : <Empty>No Cost Explorer collection history exists for this account.</Empty>}{inventory && <p>Latest inventory collection: {formatTime(inventory.scanned_at)} · {inventory.asset_count} regional resources · {inventory.status}</p>}</section>}
+        <footer className="footer"><span>Finovaunt · Read-only AWS Evidence</span><span>Values come from persisted AWS API responses; click Collect Live AWS Data to request a new snapshot.</span></footer>
+      </div>
+    </main>
+  </div>;
 }

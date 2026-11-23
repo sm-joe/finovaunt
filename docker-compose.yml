@@ -41,6 +41,11 @@ services:
       FINOVAUNT_SCAN_WORKFLOW: finovaunt-scan.yml
       FINOPS_OUTPUT_DIR: artifacts-live
       FINOVAUNT_GITHUB_TOKEN: ${FINOVAUNT_GITHUB_TOKEN:-}
+      # Optional short-lived AWS source identity; IAM workload identity is preferred.
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
     ports:
       - "127.0.0.1:8787:8787"
     volumes:

@@ -274,6 +274,25 @@ class DashboardHandler(BaseHTTPRequestHandler):
             else:
                 self._json(200, {"authorized": True})
             return
+        if route == "/api/live-dashboard":
+            current = access_control.session(self._cookie_token())
+            if not current:
+                self._json(401, {"error": "unauthorized", "message": "Please log in."})
+                return
+            if current.get("must_change_password"):
+                self._json(403, {"error": "password_change_required", "message": "Change your password first."})
+                return
+            account_id = parse_qs(urlparse(self.path).query).get("account_id", [""])[0]
+            if not re.fullmatch(r"[0-9]{12}", account_id):
+                self._json(400, {"error": "invalid_account", "message": "Select an onboarded AWS account."})
+                return
+            from src.utils.live_dashboard import account_dashboard
+            data = account_dashboard(account_id)
+            if data is None:
+                self._json(404, {"error": "account_not_found", "message": "The AWS account is not onboarded."})
+                return
+            self._json(200, data)
+            return
         if route == "/api/cloud-accounts":
             current = access_control.session(self._cookie_token())
             if not current: self._json(401, {"error":"unauthorized","message":"Please log in."}); return
