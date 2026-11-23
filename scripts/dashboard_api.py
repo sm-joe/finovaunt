@@ -92,7 +92,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         route = urlparse(self.path).path.rstrip("/") or "/"
-        if route not in ("/api/auth/login", "/api/auth/logout", "/api/auth/password", "/api/cloud-accounts", "/api/billing-scans", "/api/inventory-scans", "/api/recommendation-decisions"):
+        if route not in ("/api/auth/login", "/api/auth/logout", "/api/auth/password", "/api/cloud-accounts", "/api/billing-scans", "/api/inventory-scans", "/api/recommendation-decisions", "/api/ebs-reviews"):
             self._json(405, {"error": "method_not_allowed", "message": "This API endpoint does not accept POST requests."})
             return
         try:
@@ -196,6 +196,21 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     })
                 return
             self._json(200, result)
+            return
+        if route == "/api/ebs-reviews":
+            try:
+                item = access_control.record_ebs_review(
+                    account_id=str(body.get("account_id", "")),
+                    inventory_scan_id=str(body.get("inventory_scan_id", "")),
+                    resource_id=str(body.get("resource_id", "")),
+                    decision=str(body.get("decision", "")),
+                    note=str(body.get("note", "")),
+                    reviewed_by=str(current["username"]),
+                )
+            except ValueError as exc:
+                self._json(409, {"error": "review_rejected", "message": str(exc)})
+                return
+            self._json(201, item)
             return
         if route == "/api/recommendation-decisions":
             run_id = str(body.get("run_id", "")).strip()
@@ -317,6 +332,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if not current: self._json(401, {"error":"unauthorized","message":"Please log in."}); return
             if current.get("must_change_password"): self._json(403, {"error":"password_change_required","message":"Change the default password before continuing."}); return
             self._json(200, {"items":access_control.list_accounts()}); return
+        if route == "/api/ebs-reviews":
+            current = access_control.session(self._cookie_token())
+            if not current or current.get("must_change_password"):
+                self._json(401, {"error": "unauthorized", "message": "Please log in and change the initial password."})
+                return
+            account_id = parse_qs(urlparse(self.path).query).get("account_id", [""])[0]
+            if not re.fullmatch(r"[0-9]{12}", account_id):
+                self._json(400, {"error": "invalid_account", "message": "Select a valid onboarded account."})
+                return
+            if access_control.get_account(account_id) is None:
+                self._json(404, {"error": "account_not_found", "message": "Account not onboarded."})
+                return
+            self._json(200, {"items": access_control.ebs_reviews(account_id)})
+            return
         if route == "/api/recommendation-decisions":
             current = access_control.session(self._cookie_token())
             if not current or current.get("must_change_password"):

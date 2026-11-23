@@ -31,7 +31,7 @@ def _read() -> dict[str, Any]:
                 "Set FINOVAUNT_BOOTSTRAP_PASSWORD (at least 12 characters) "
                 "before starting a new Finovaunt installation."
             )
-        state = {"user": {"username": "admin", "password": _hash(bootstrap_password), "must_change_password": True}, "cloud_accounts": [], "billing_scans": [], "inventory_scans": [], "recommendation_decisions": []}
+        state = {"user": {"username": "admin", "password": _hash(bootstrap_password), "must_change_password": True}, "cloud_accounts": [], "billing_scans": [], "inventory_scans": [], "recommendation_decisions": [], "ebs_reviews": []}
         _write(state)
         return state
     try:
@@ -41,6 +41,7 @@ def _read() -> dict[str, Any]:
         data.setdefault("billing_scans", [])
         data.setdefault("inventory_scans", [])
         data.setdefault("recommendation_decisions", [])
+        data.setdefault("ebs_reviews", [])
         return data
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         raise RuntimeError("Finovaunt control-plane state is unreadable; refusing to reset credentials or account records.") from exc
@@ -160,6 +161,10 @@ def delete_account(account_id: str) -> bool:
             item for item in state.get("inventory_scans", [])
             if item.get("account_id") != account_id
         ]
+        state["ebs_reviews"] = [
+            item for item in state.get("ebs_reviews", [])
+            if item.get("account_id") != account_id
+        ]
         _write(state)
         return True
 
@@ -224,3 +229,43 @@ def recommendation_decisions(run_id: str | None = None) -> list[dict[str, Any]]:
             dict(item) for item in items
             if run_id is None or item.get("run_id") == run_id
         ]
+
+
+def record_ebs_review(*, account_id: str, inventory_scan_id: str, resource_id: str,
+                      decision: str, note: str, reviewed_by: str) -> dict[str, Any]:
+    """Audited local decision only. AWS deletion and kubectl mutation are forbidden."""
+    if decision not in {"approved_for_manual_review", "rejected"}:
+        raise ValueError("Decision must be approved_for_manual_review or rejected.")
+    if not (10 <= len(note.strip()) <= 2000):
+        raise ValueError("Provide an evidence-based review note of 10 to 2000 characters.")
+    with _LOCK:
+        state = _read()
+        if not any(a.get("account_id") == account_id for a in state["cloud_accounts"]):
+            raise ValueError("AWS account is not onboarded.")
+        scans = [x for x in state.get("inventory_scans", []) if x.get("account_id") == account_id]
+        if not scans or scans[-1].get("id") != inventory_scan_id:
+            raise ValueError("Inventory evidence is stale. Collect current inventory and review again.")
+        asset = next((x for x in scans[-1].get("assets", [])
+                      if x.get("id") == resource_id and x.get("type") == "ebs"
+                      and x.get("state") == "available"), None)
+        if asset is None:
+            raise ValueError("Unattached EBS candidate is absent from the current scan.")
+        from datetime import datetime, timezone
+        item = {
+            "id": secrets.token_hex(12), "account_id": account_id,
+            "inventory_scan_id": inventory_scan_id, "resource_id": resource_id,
+            "decision": decision, "note": note.strip(), "reviewed_by": reviewed_by,
+            "reviewed_at": datetime.now(timezone.utc).isoformat(),
+            "infrastructure_applied": False,
+            "savings_verified": False,
+        }
+        state.setdefault("ebs_reviews", []).append(item)
+        state["ebs_reviews"] = state["ebs_reviews"][-1000:]
+        _write(state)
+        return dict(item)
+
+
+def ebs_reviews(account_id: str) -> list[dict[str, Any]]:
+    with _LOCK:
+        return [dict(x) for x in _read().get("ebs_reviews", [])
+                if x.get("account_id") == account_id]

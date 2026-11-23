@@ -13,10 +13,10 @@ Finovaunt connects AWS cost evidence and cloud inventory with a read-only optimi
 | Account access | Local administrator login, first-use password rotation, protected cloud/billing/scan APIs | A single local administrator, not enterprise SSO/RBAC |
 | AWS onboarding | Read-only cross-account IAM role registration | Finovaunt does not create AWS roles or store long-lived AWS keys in the browser |
 | Billing | Cost Explorer month-to-date service spend, pagination, exact decimal evidence, historical saved scans | Provisional account/service spend is not verified resource-level recurring cost |
-| Asset inventory | Account-scoped EC2, RDS and EBS discovery for a selected region | Unattached EBS is review-only, not a deletion instruction |
-| Optimization engine | Conservative utilization collection, risk assessment, cost-evidence guardrails and Terraform proposal artifacts | Missing memory, seasonality or cost evidence blocks unsupported savings estimates |
+| Asset inventory | Account-scoped EC2, RDS and EBS discovery with actual EBS type, size, IOPS, throughput, tags and attachment evidence | Region-scoped and read-only |
+| EBS optimization | AWS Price List gp2/gp3 storage-only monthly scenario; optional EKS Kubernetes PV correlation; risk, confidence and explicit evidence | Potential reduction is not realized savings; unknown PV/price evidence never authorizes deletion |\n| Optimization engine | Conservative utilization collection, risk assessment, cost-evidence guardrails and Terraform proposal artifacts | Missing memory, seasonality or cost evidence blocks unsupported savings estimates |
 | Dashboard | Overview, opportunities, assets, scan history, account management and billing | Dashboard scan artifacts and on-demand account inventory are separate data sources today |
-| Human review | Approve/reject opportunity with a note, reviewer, timestamp and run ID | **Approval is audit-only. It does not apply Terraform or make AWS changes** |
+| Human review | Audit-only EBS candidate review tied to current inventory scan, with note, reviewer and timestamp | **Approval never deletes volumes or executes AWS/Kubernetes changes** |
 | Automation | GitHub Actions read-only AWS scan with OIDC and artifact synchronization | Scheduled workflow uses its configured role/region, not automatic fanout to every onboarded account |
 | Deployment | Docker Compose API + React dashboard; Python CLI and scan workflow | Local-first, no claim of independently certified multi-user production readiness |
 
@@ -71,7 +71,7 @@ curl --fail http://127.0.0.1:8787/api/health
 
 Open **http://127.0.0.1:4173**. Sign in as `admin` with the generated password from `.env`, then rotate it when prompted. Keep `.env` private; it is not committed. Existing installations retain their persisted password hash in `data/control-plane.json`.
 
-The dashboard may initially show no scan artifacts. This is not permission to fabricate recommendations or savings. To run a live AWS billing or inventory scan, the backend runtime must also have an AWS source identity permitted to assume the selected account role.
+The dashboard may initially show no scan artifacts. This is not permission to fabricate recommendations or savings. To run a live AWS billing or inventory scan, the backend runtime must also have an AWS source identity permitted to assume the selected account role. For optional EBS storage pricing and Kubernetes PV checks, also allow `pricing:GetProducts`, `eks:ListClusters`, `eks:DescribeCluster`, plus EKS cluster RBAC read access to persistent volumes. If these checks cannot complete, evidence is marked unavailable rather than assumed.
 
 ```bash
 docker compose logs --tail=100 api frontend
@@ -132,7 +132,7 @@ The local HTTP API provides:
 - `GET /api/auth/session` — current session metadata
 - `GET /api/cloud-accounts`, `POST /api/cloud-accounts`, `DELETE /api/cloud-accounts/{account_id}`
 - `POST /api/billing-scans`, `GET /api/billing-scans/{account_id}`
-- `POST /api/inventory-scans`, `GET /api/inventory-scans/{account_id}`
+- `POST /api/inventory-scans`, `GET /api/inventory-scans/{account_id}`\n- `GET /api/live-dashboard?account_id=...` — actual account-scoped AWS evidence and EBS scenario estimates\n- `GET /api/ebs-reviews?account_id=...`, `POST /api/ebs-reviews` — audit-only candidate reviews
 - `GET /api/overview`, `GET /api/assets`, `GET /api/opportunities`, `GET /api/scans`
 - `GET /api/recommendation-decisions`, `POST /api/recommendation-decisions`
 

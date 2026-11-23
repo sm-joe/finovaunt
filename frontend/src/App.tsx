@@ -7,8 +7,9 @@ type Billing = { id: string; scanned_at: string; status: string; total_cost: num
 type Asset = { id: string; type: string; name: string; state: string; size: string; region: string; recommendation: string; cost_status: string };
 type Inventory = { id: string; scanned_at: string; status: string; region: string; asset_count: number; truncated: boolean; assets: Asset[] };
 type History = { id: string; scanned_at: string; period_start: string; total_cost: number; currency: string; status: string };
-type Candidate = { resource_id: string; name: string; type: string; region: string; reason: string; estimated_monthly_savings: null; action: string };
-type Dashboard = { source: "aws_collected"; account: Account; billing: Billing | null; inventory: Inventory | null; billing_history: History[]; review_candidates: Candidate[]; estimated_savings: null; realized_savings: null; billing_status: string; inventory_status: string };
+type Candidate = { resource_id: string; name: string; type: string; region: string; reason: string; estimated_monthly_savings: string | null; possible_monthly_storage_reduction_usd?: string | null; verified_savings: null; confidence: string; risk: string; action: string; inventory_scan_id: string; pricing?: {source: string; usd_per_gb_month: string; unit: string; volume_type: string} | null; kubernetes?: {status: string; discovery_status?: string; pv_references?: {cluster:string;pv:string;pvc?:string;namespace?:string;reclaim_policy?:string}[]; tags?: Record<string,string>}; evidence?: string[]; assumptions?: string[]; can_auto_delete: false };
+type Review = { id: string; inventory_scan_id: string; resource_id: string; decision: string; note: string; reviewed_by: string; reviewed_at: string; infrastructure_applied: false };
+type Dashboard = { source: "aws_collected"; account: Account; billing: Billing | null; inventory: Inventory | null; billing_history: History[]; review_candidates: Candidate[]; ebs_reviews: Review[]; potential_ebs_savings_usd?: string | null; ebs_price_coverage?: {priced_candidates:number; total_candidates:number}; estimated_savings: null; realized_savings: null; billing_status: string; inventory_status: string };
 type Tab = "Overview" | "Assets" | "Cost Breakdown" | "Review Candidates" | "Scan History";
 const tabs: Tab[] = ["Overview", "Assets", "Cost Breakdown", "Review Candidates", "Scan History"];
 
@@ -48,6 +49,11 @@ export default function App({ onOpenCloud }: { onOpenCloud: () => void }) {
   const [error, setError] = useState("");
   const [scanErrors, setScanErrors] = useState<string[]>([]);
   const [externalId, setExternalId] = useState("");
+  const [reviewResource, setReviewResource] = useState("");
+  const [reviewNote, setReviewNote] = useState("");
+  const [reviewDecision, setReviewDecision] = useState<"approved_for_manual_review" | "rejected">("approved_for_manual_review");
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewMessage, setReviewMessage] = useState("");
   const [lastRefresh, setLastRefresh] = useState<string | null>(null);
 
   const loadAccounts = useCallback(async () => {
@@ -87,6 +93,23 @@ export default function App({ onOpenCloud }: { onOpenCloud: () => void }) {
     setScanning(false);
   }
 
+  async function submitReview(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!data?.inventory || !reviewResource || reviewNote.trim().length < 10) return;
+    setReviewBusy(true); setReviewMessage("");
+    try {
+      await request("/api/ebs-reviews", { method: "POST", body: JSON.stringify({
+        account_id: accountId, inventory_scan_id: data.inventory.id,
+        resource_id: reviewResource, decision: reviewDecision, note: reviewNote.trim(),
+      }) });
+      setReviewNote("");
+      setReviewMessage("Review recorded. No AWS or Kubernetes changes were made.");
+      await loadDashboard(accountId);
+    } catch (err) {
+      setReviewMessage(err instanceof Error ? err.message : "Review could not be saved.");
+    } finally { setReviewBusy(false); }
+  }
+
   const billing = data?.billing;
   const inventory = data?.inventory;
   const noEvidence = !billing && !inventory;
@@ -122,7 +145,7 @@ export default function App({ onOpenCloud }: { onOpenCloud: () => void }) {
             <Metric Icon={Wallet} label="Month-to-Date Cloud Spend" value={formatMoney(billing?.total_cost, billing?.currency)} detail={billing ? billing.period_start + " to " + billing.period_end_exclusive + " (provisional)" : "Cost Explorer not collected"}/>
             <Metric Icon={Boxes} label="Observed Resources" value={inventory ? String(inventory.asset_count) : "Not available"} detail={inventory ? inventory.region + (inventory.truncated ? " · Partial inventory" : " · EC2, RDS, EBS") : "Inventory not collected"}/>
             <Metric Icon={Activity} label="Review Candidates" value={inventory ? String(data?.review_candidates.length ?? 0) : "Not available"} detail="Unattached EBS only; human review required"/>
-            <Metric Icon={CircleDollarSign} label="Verified Savings" value="Not available" detail="No verified cost attribution or realized savings"/>
+            <Metric Icon={CircleDollarSign} label="Potential EBS Storage Reduction" value={data?.potential_ebs_savings_usd == null ? "Not estimable" : formatMoney(Number(data.potential_ebs_savings_usd))} detail={`${data?.ebs_price_coverage?.priced_candidates ?? 0}/${data?.ebs_price_coverage?.total_candidates ?? 0} candidates priced · hypothetical monthly storage only; verified savings: none`}/>
           </div>
           <div className="content-grid">
             <section className="panel"><h2>Cost Explorer Spend by Service</h2>{billing ? billing.services.length ? <div className="fin-service-list">{[...billing.services].sort((a,b) => b.amount - a.amount).slice(0, 12).map(s => <div key={s.service}><span>{s.service}</span><strong>{formatMoney(s.amount, s.currency)}</strong></div>)}</div> : <Empty>Cost Explorer returned no service charges for this period.</Empty> : <Empty>Collect AWS billing to show real spend by service.</Empty>}</section>
@@ -131,7 +154,35 @@ export default function App({ onOpenCloud }: { onOpenCloud: () => void }) {
         </>}
         {tab === "Assets" && <section className="panel table-panel"><h2>Observed AWS Resources</h2>{inventory ? inventory.assets.length ? <div className="table-scroll"><table><thead><tr><th>Resource</th><th>Type</th><th>State</th><th>Size</th><th>Region</th><th>Monthly Cost</th></tr></thead><tbody>{inventory.assets.map(a => <tr key={a.type + a.id}><td><strong>{a.name}</strong><small className="subline">{a.id}</small></td><td>{a.type.toUpperCase()}</td><td>{a.state}</td><td>{a.size}</td><td>{a.region}</td><td>Not attributed</td></tr>)}</tbody></table></div> : <Empty>AWS returned zero EC2, RDS, or EBS resources in the selected region.</Empty> : <Empty>Inventory not collected. Run an AWS collection to list actual resources.</Empty>}</section>}
         {tab === "Cost Breakdown" && <section className="panel table-panel"><h2>Account-Level Billing · Cost Explorer</h2>{billing ? <><p>Unblended cost from {billing.period_start} through {billing.period_end_exclusive} (exclusive). Current month values are provisional.</p><div className="table-scroll"><table><thead><tr><th>AWS Service</th><th>Observed Spend</th><th>Currency</th></tr></thead><tbody>{[...billing.services].sort((a,b) => b.amount - a.amount).map(s => <tr key={s.service}><td>{s.service}</td><td>{formatMoney(s.amount, s.currency)}</td><td>{s.currency}</td></tr>)}</tbody></table></div></> : <Empty>No Cost Explorer billing collected for this account.</Empty>}</section>}
-        {tab === "Review Candidates" && <section className="panel table-panel"><h2>Review-Only Optimization Candidates</h2><p>Unattached EBS volumes are surfaced for human investigation; no price or savings estimate is claimed.</p>{inventory ? data?.review_candidates.length ? <div className="table-scroll"><table><thead><tr><th>Resource</th><th>Region</th><th>Review Reason</th><th>Estimated Savings</th></tr></thead><tbody>{data.review_candidates.map(c => <tr key={c.resource_id}><td><strong>{c.name}</strong><small className="subline">{c.resource_id}</small></td><td>{c.region}</td><td>{c.reason}</td><td>Not estimable</td></tr>)}</tbody></table></div> : <Empty>No unattached EBS volumes identified in the collected regional inventory.</Empty> : <Empty>Collect regional inventory before assessing resources.</Empty>}</section>}
+        {tab === "Review Candidates" && <section className="panel table-panel">
+          <h2>EBS Optimization · Evidence and Human Review</h2>
+          <p>Potential monthly storage reductions are estimates from AWS Price List OnDemand GB-month rates, not realized savings. EKS/PV evidence, retained data, snapshots, IOPS and throughput may block or change a recommendation. Finovaunt never deletes resources.</p>
+          <div className="snapshot-row"><span>Potential monthly EBS storage reduction (priced subset)</span><strong>{data?.potential_ebs_savings_usd == null ? "Not estimable" : formatMoney(Number(data.potential_ebs_savings_usd))}</strong></div>
+          <div className="snapshot-row"><span>Verified or realized savings</span><strong>Not verified</strong></div>
+          <div className="snapshot-row"><span>Pricing coverage</span><strong>{data?.ebs_price_coverage?.priced_candidates ?? 0} of {data?.ebs_price_coverage?.total_candidates ?? 0} candidates</strong></div>
+          {inventory ? data?.review_candidates.length ? <div className="table-scroll"><table><thead><tr><th>Resource / Volume ID</th><th>Region</th><th>Potential Storage / Month</th><th>EKS PV Correlation</th><th>Risk / Confidence</th><th>Evidence</th></tr></thead><tbody>{data.review_candidates.map(c => <tr key={c.resource_id}>
+            <td><strong>{c.name}</strong><small className="subline">{c.resource_id}</small></td>
+            <td>{c.region}</td>
+            <td>{c.estimated_monthly_savings == null ? "Not estimable" : formatMoney(Number(c.estimated_monthly_savings))}<small className="subline">Storage-only scenario, not verified</small></td>
+            <td>{c.kubernetes?.status || "not_verified"}<small className="subline">{c.kubernetes?.discovery_status || "No EKS evidence"}</small>{c.kubernetes?.pv_references?.map((pv, i) => <small className="subline" key={i}>{pv.cluster} / PV {pv.pv} / PVC {pv.namespace || "?"}/{pv.pvc || "?"}</small>)}</td>
+            <td>{c.risk} risk<small className="subline">{c.confidence} confidence</small></td>
+            <td><details><summary>View evidence and assumptions</summary><p>{c.reason}</p><ul>{(c.evidence || []).map((e,i) => <li key={i}>{e}</li>)}</ul><small>Pricing: {c.pricing ? `${c.pricing.source}; ${c.pricing.usd_per_gb_month} USD/${c.pricing.unit}` : "Unavailable"}</small><ul>{(c.assumptions || []).map((a,i) => <li key={i}>{a}</li>)}</ul></details></td>
+          </tr>)}</tbody></table></div> : <Empty>No unattached EBS candidates identified in this inventory.</Empty> : <Empty>Collect real AWS inventory to review EBS volumes.</Empty>}
+          {data?.review_candidates.length ? <form onSubmit={e => void submitReview(e)} className="fin-settings-form" style={{marginTop: 24, display: "grid", gap: 12, maxWidth: 700}}>
+            <h3>Record Human Review (Audit Only)</h3>
+            <label>Unattached EBS volume<select required value={reviewResource} onChange={e => setReviewResource(e.target.value)}>
+              <option value="">Select a candidate</option>{data.review_candidates.map(c => <option key={c.resource_id} value={c.resource_id}>{c.name} · {c.resource_id}</option>)}
+            </select></label>
+            <label>Decision<select value={reviewDecision} onChange={e => setReviewDecision(e.target.value as "approved_for_manual_review" | "rejected")}>
+              <option value="approved_for_manual_review">Approve for External Manual Investigation (No Deletion)</option><option value="rejected">Reject Candidate</option>
+            </select></label>
+            <label>Evidence-Based Review Note<textarea required minLength={10} maxLength={2000} rows={3} value={reviewNote} onChange={e => setReviewNote(e.target.value)} placeholder="Document ownership, Kubernetes PV/PVC references, backup/retention verification, and risk." /></label>
+            <button className="primary-button" disabled={reviewBusy || reviewNote.trim().length < 10 || !reviewResource}>{reviewBusy ? "Recording…" : "Save Review (No AWS Changes)"}</button>
+            {reviewMessage && <p role="status">{reviewMessage}</p>}
+          </form> : null}
+          <h3 style={{marginTop: 22}}>Review Audit History</h3>
+          {data?.ebs_reviews?.length ? <div className="table-scroll"><table><thead><tr><th>Volume</th><th>Decision</th><th>Reviewer / Date</th><th>Note</th><th>AWS Changes</th></tr></thead><tbody>{[...data.ebs_reviews].reverse().map(r => <tr key={r.id}><td>{r.resource_id}</td><td>{r.decision}</td><td>{r.reviewed_by}<small className="subline">{formatTime(r.reviewed_at)}</small></td><td>{r.note}</td><td>None</td></tr>)}</tbody></table></div> : <Empty>No review decisions recorded.</Empty>}
+        </section>}
         {tab === "Scan History" && <section className="panel table-panel"><h2>Persisted AWS Collection History</h2>{data?.billing_history.length ? <div className="table-scroll"><table><thead><tr><th>Collected At</th><th>Month</th><th>Month-to-Date Spend</th><th>Status</th></tr></thead><tbody>{[...data.billing_history].reverse().map(s => <tr key={s.id}><td>{formatTime(s.scanned_at)}</td><td>{s.period_start}</td><td>{formatMoney(s.total_cost,s.currency)}</td><td>{s.status}</td></tr>)}</tbody></table></div> : <Empty>No Cost Explorer collection history exists for this account.</Empty>}{inventory && <p>Latest inventory collection: {formatTime(inventory.scanned_at)} · {inventory.asset_count} regional resources · {inventory.status}</p>}</section>}
         <footer className="footer"><span>Finovaunt · Read-only AWS Evidence</span><span>Values come from persisted AWS API responses; click Collect Live AWS Data to request a new snapshot.</span></footer>
       </div>
