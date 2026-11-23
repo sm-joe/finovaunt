@@ -187,18 +187,29 @@ For GitHub scan-artifact synchronization, provide a token with the minimum repos
 
 A verified no-resource AWS scan produces `scan_status.json` with `empty_inventory` status and zero savings. It does not generate misleading optimization proposals.
 
-## Backup and restore
+## Verified offline backup and restore
 
-Back up both local state and scan evidence, preserving file permissions and confidentiality:
+Finovaunt ships a standard-library `scripts/control_backup.py` utility to create, verify and explicitly restore local control-plane state and saved scan artifacts. Run it **on the host with the API stopped** so the snapshot is consistent. The archive includes administrator password hashes, cloud account data, scan history and decision notes: keep it encrypted and access-restricted.
 
 ```bash
-docker compose stop
+docker compose stop api frontend
 umask 077
-tar -czf finovaunt-backup.tar.gz data artifacts-live
-docker compose start
+python scripts/control_backup.py backup ./finovaunt-state.tar.gz
+python scripts/control_backup.py verify ./finovaunt-state.tar.gz
+docker compose start api frontend
 ```
 
-Restore only after stopping the API and verifying the backup's integrity and source. Preserve ownership of the restored directories for UID 10001. A backup file may contain password hashes, account identifiers, billing history, review notes and cloud inventory; encrypt it at rest and restrict access.
+Recovery is an explicit, destructive operation. Stop Finovaunt first, verify a trusted backup, and preserve your existing `data/` directory separately until acceptance succeeds:
+
+```bash
+docker compose stop api frontend
+python scripts/control_backup.py verify ./finovaunt-state.tar.gz
+python scripts/control_backup.py restore ./finovaunt-state.tar.gz --force
+docker compose up -d --force-recreate api frontend
+docker compose ps
+```
+
+The backup utility validates SHA-256 checksums for each archive entry, refuses symlinks, unsafe paths, invalid control-plane JSON and oversized entries. Restored state uses restrictive file permissions; stale files absent from the backup are not automatically deleted. A restore does not touch AWS. It cannot retroactively reconstruct deleted scans if no previous backup exists. A successful backup/restore test is not a replacement for your own periodic encrypted backups or retention policy.
 
 ## Troubleshooting
 
