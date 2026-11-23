@@ -87,24 +87,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         route = urlparse(self.path).path.rstrip("/") or "/"
         if route not in ("/api/auth/login", "/api/auth/logout", "/api/auth/password", "/api/cloud-accounts", "/api/billing-scans", "/api/inventory-scans"):
-            if route == "/api/inventory-scans":
-            account_id = str(body.get("account_id", ""))
-            account = access_control.get_account(account_id)
-            if not account:
-                self._json(404, {"error": "account_not_found", "message": "Onboard the AWS account first."})
-                return
-            try:
-                from src.tools.inventory_service import collect_inventory
-                inventory = collect_inventory(account, external_id=str(body.get("external_id", "")))
-                result = access_control.save_inventory_scan(account_id, inventory)
-                self._json(200, result)
-            except Exception as exc:
-                self._json(502, {
-                    "error": "inventory_scan_failed",
-                    "message": f"AWS inventory scan failed ({type(exc).__name__}). Verify IAM read permissions and role trust.",
-                })
-            return
-        self._json(405, {"error":"method_not_allowed","message":"This API endpoint does not accept POST requests."})
+            self._json(405, {"error": "method_not_allowed", "message": "This API endpoint does not accept POST requests."})
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -163,6 +146,23 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self._json(502, {
                     "error": "billing_scan_failed",
                     "message": f"AWS billing scan failed ({type(exc).__name__}). Check role trust and Cost Explorer read permissions.",
+                })
+            return
+        if route == "/api/inventory-scans":
+            account_id = str(body.get("account_id", ""))
+            account = access_control.get_account(account_id)
+            if not account:
+                self._json(404, {"error": "account_not_found", "message": "Onboard the AWS account first."})
+                return
+            try:
+                from src.tools.inventory_service import collect_inventory
+                inventory = collect_inventory(account, external_id=str(body.get("external_id", "")))
+                result = access_control.save_inventory_scan(account_id, inventory)
+                self._json(200, result)
+            except Exception as exc:
+                self._json(502, {
+                    "error": "inventory_scan_failed",
+                    "message": f"AWS inventory scan failed ({type(exc).__name__}). Verify IAM read permissions and role trust.",
                 })
             return
         self._json(405, {"error":"method_not_allowed","message":"This API endpoint does not accept POST requests."})
