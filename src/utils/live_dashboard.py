@@ -14,8 +14,11 @@ def account_dashboard(account_id: str) -> dict | None:
     if account is None:
         return None
     billing_history = access_control.billing_history(account_id)
-    latest_billing = billing_history[-1] if billing_history else None
-    latest_inventory = access_control.latest_inventory_scan(account_id)
+    revision = int(account.get("config_revision", 1))
+    current_billing = [scan for scan in billing_history if int(scan.get("config_revision", 1)) == revision]
+    latest_billing = current_billing[-1] if current_billing else None
+    inventory_scan = access_control.latest_inventory_scan(account_id)
+    latest_inventory = inventory_scan if inventory_scan and int(inventory_scan.get("config_revision", 1)) == revision and inventory_scan.get("region") == account.get("region") else None
     assets = list(latest_inventory.get("assets", [])) if latest_inventory else []
 
     # Savings are scenario estimates from verified AWS Price List rates,
@@ -50,6 +53,7 @@ def account_dashboard(account_id: str) -> dict | None:
         "billing": latest_billing,
         "inventory": latest_inventory,
         "ebs_reviews": access_control.ebs_reviews(account_id),
+        "account_config_audit": access_control.account_configuration_audit(account_id),
         "optimization_history": access_control.optimization_history(account_id),
         "billing_history": [
             {"id": scan["id"], "scanned_at": scan.get("scanned_at"),
