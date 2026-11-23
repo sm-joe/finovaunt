@@ -1,31 +1,52 @@
-# Finovaunt CI/CD
+# Finovaunt CI/CD and Release Gates
 
-## Workflows
+## Temporary product-development mode
 
-- `.github/workflows/ci.yml` compiles and tests the Python project, builds the Vite/TypeScript frontend, and validates the Docker Compose configuration.
-- `.github/workflows/security.yml` checks repository history for secrets, audits Python and npm dependencies, and scans source/configuration with Trivy.
-- `.github/workflows/build.yml` calls the CI and Security workflows as reusable workflows. The API and dashboard image jobs each declare `needs: [ci, security]`; either failure or cancellation prevents both image jobs from running.
+During the M1–M6 enhancement phase, the owner requested disabling **security scans and Docker image builds** on every pull request and push. The current `.github/workflows/build.yml` therefore invokes the reusable `.github/workflows/ci.yml` as the lightweight product CI.
 
-CI and Security also run independently on pushes and pull requests. The Docker workflow runs on pushes and manual dispatches, but its image jobs are restricted to the repository's default branch.
+The product CI checks:
+- Python package install, syntax compilation and backend tests
+- Locked npm installation and React/TypeScript production build
+- Docker Compose **configuration** validation (`docker compose config --quiet`, not an image build)
 
-## Images
+The `.github/workflows/security.yml` file remains in the repository but is not invoked by the product-development workflow. Docker image publication to GHCR is likewise disabled for PRs and pushes. This is temporary and **does not imply security approval**.
 
-The workflow builds two separate local images on GitHub-hosted runners:
+## Before stable v1.0.0
 
-- API: root `Dockerfile`, tagged `finovaunt-api:<commit-sha>`
-- Dashboard: `frontend/Dockerfile`, tagged `finovaunt-dashboard:<commit-sha>`
+Restore the complete release pipeline with all of the following gates:
 
-Images are not pushed to a registry and are not retained after the GitHub-hosted runner is disposed. Registry publishing is intentionally not enabled.
+1. Backend tests, type-checking and linting.
+2. Frontend TypeScript validation, ESLint, build and Playwright end-to-end tests.
+3. Secret scanning, Python and npm dependency audits, and Trivy filesystem/IaC scans.
+4. Reproducible API/dashboard Docker image builds and vulnerability checks.
+5. Self-hosted clean-install, login, AWS role onboarding, billing, inventory, and recommendation review acceptance.
+6. Durable backup/restore tests and recovery of interrupted scan jobs.
+7. Live read-only AWS acceptance, including empty inventories, missing telemetry and cost attribution boundaries.
+8. Verified release artifacts, version metadata, release notes and license/security documents.
 
-## Security gate behavior
+The previous security workflow identified an outdated vulnerable `certifi 2026.7.22` dependency lock; the repaired version must be resolved into `uv.lock` and audited before release. Do not hide a high/critical finding to obtain a green release badge.
 
-- Gitleaks fails the workflow when its secret-detection policy reports a finding.
-- `pip-audit` fails on detected Python dependency vulnerabilities.
-- `npm audit --audit-level=high` fails on high or critical npm advisories.
-- Trivy scans vulnerabilities, secrets, and misconfiguration, failing on HIGH or CRITICAL findings that are not ignored as unfixed.
+## CLI validation (Bash)
 
-A scan can expose existing findings in the repository or dependency lockfiles. Fix or explicitly review such findings rather than weakening the gate just to obtain a green run.
+```bash
+uv sync --dev
+uv run python -m compileall -q src scripts tests
+uv run python -m pytest -q
+cd frontend
+npm ci
+npm run lint
+npm run typecheck
+npm run build
+cd ..
+docker compose config --quiet
+```
 
-## GitHub branch protection
+If any command fails, correct the implementation and rerun all affected checks. GitHub status must be based on the exact commit being merged or tagged.
 
-For pull-request enforcement, configure a branch ruleset for the default branch requiring the `Finovaunt CI` and `Finovaunt Security` checks to pass before merge. The Docker workflow itself builds only on the default branch after re-running both reusable gates for the exact pushed commit.
+## Historical scan workflow
+
+`.github/workflows/finovaunt-scan.yml` remains the separately scheduled AWS read-only scanner, using GitHub OIDC. It can report empty inventory as a no-op but must never fabricate asset utilization or savings. Successful scan artifacts may be synchronized by the dashboard when an appropriate GitHub token is configured.
+
+## Publication policy
+
+Only publish signed, verified, immutable release artifacts after all release gates are reinstated and passing. Development green CI is **not** proof of stable release readiness.
