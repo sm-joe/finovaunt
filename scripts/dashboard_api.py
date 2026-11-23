@@ -131,30 +131,22 @@ class DashboardHandler(BaseHTTPRequestHandler):
             except ValueError as exc: self._json(400, {"error":"invalid_account","message":str(exc)})
             return
         if route == "/api/billing-scans":
-            account_id = str(body.get("account_id", "")); account = access_control.get_account(account_id)
-            if not account: self._json(404, {"error":"account_not_found","message":"Onboard the AWS account first."}); return
+            account_id = str(body.get("account_id", ""))
+            account = access_control.get_account(account_id)
+            if not account:
+                self._json(404, {"error": "account_not_found", "message": "Onboard the AWS account first."})
+                return
             try:
-                import boto3
-                sts = boto3.client("sts", region_name=account["region"])
-                assume_args = {"RoleArn": account["role_arn"], "RoleSessionName":"FinovauntBillingReadOnly"}
-                if body.get("external_id"): assume_args["ExternalId"] = str(body["external_id"])
-                credentials = sts.assume_role(**assume_args)["Credentials"]
-                assumed_sts = boto3.client("sts", region_name=account["region"], aws_access_key_id=credentials["AccessKeyId"], aws_secret_access_key=credentials["SecretAccessKey"], aws_session_token=credentials["SessionToken"])
-                if assumed_sts.get_caller_identity().get("Account") != account_id:
-                    raise ValueError("assumed role account does not match onboarded account")
-                ce = boto3.client("ce", region_name="us-east-1", aws_access_key_id=credentials["AccessKeyId"], aws_secret_access_key=credentials["SecretAccessKey"], aws_session_token=credentials["SessionToken"])
-                from datetime import date
-                start = date.today().replace(day=1); end = date.today()
-                response = ce.get_cost_and_usage(TimePeriod={"Start":start.isoformat(),"End":end.isoformat()}, Granularity="MONTHLY", Metrics=["UnblendedCost"], GroupBy=[{"Type":"DIMENSION","Key":"SERVICE"}])
-                periods = response.get("ResultsByTime", [])
-                groups = periods[0].get("Groups", []) if periods else []
-                rows = [{"service":g.get("Keys",["Unknown"])[0],"amount":float(g.get("Metrics",{}).get("UnblendedCost",{}).get("Amount",0)),"currency":g.get("Metrics",{}).get("UnblendedCost",{}).get("Unit","USD")} for g in groups]
-                total = sum(row["amount"] for row in rows)
-                result = access_control.save_billing_scan(account_id, {"scanned_at":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()),"period_start":start.isoformat(),"period_end_exclusive":end.isoformat(),"total_cost":round(total,2),"currency":rows[0]["currency"] if rows else "USD","services":rows,"status":"success"})
+                from src.tools.billing_service import collect_billing
+                evidence = collect_billing(account, external_id=str(body.get("external_id", "")))
+                result = access_control.save_billing_scan(account_id, evidence)
                 self._json(200, result)
             except Exception as exc:
-                # Return a useful category, never credentials or SDK request details.
-                self._json(502, {"error":"billing_scan_failed","message":f"AWS billing scan failed ({type(exc).__name__}). Verify the role trust policy and Cost Explorer read permissions."})
+                # Never expose role credentials, SDK exception messages, or account secrets.
+                self._json(502, {
+                    "error": "billing_scan_failed",
+                    "message": f"AWS billing scan failed ({type(exc).__name__}). Check role trust and Cost Explorer read permissions.",
+                })
             return
         self._json(405, {"error":"method_not_allowed","message":"This API endpoint does not accept POST requests."})
 
