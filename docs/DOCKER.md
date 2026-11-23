@@ -7,7 +7,7 @@ Finovaunt provides a self-hosted React dashboard and a Python API using two Dock
 - Linux with Docker Engine and Docker Compose v2
 - OpenSSL for generating a first-install password
 - TCP 4173 and 8787 available on local loopback
-- Sufficient write access to `data/` and `artifacts-live/` by the API container's UID 10001
+- Docker permissions to run a one-shot root-owned directory initialization helper; the application service itself runs as UID 10001
 
 ## Quickstart (Bash only)
 
@@ -17,7 +17,6 @@ From the repository root:
 umask 077
 printf 'FINOVAUNT_BOOTSTRAP_PASSWORD=%s\n' "$(openssl rand -hex 24)" > .env
 mkdir -p data artifacts-live
-sudo chown -R 10001:10001 data artifacts-live
 
 docker compose config --quiet
 docker compose up -d --build
@@ -38,6 +37,8 @@ docker compose logs --tail=100 api frontend
 docker compose restart api frontend
 docker compose down
 ```
+
+The `init-data` one-shot service runs before the API, adjusts ownership of `./data` to UID 10001 (including older `control-plane.json.tmp` files), then exits. The API continues running as non-root. This avoids needing a manual host-side `sudo chown` for the control-plane path and preserves existing user credentials, accounts and billing history. The helper needs host filesystem support for ownership changes; on filesystems that reject `chown`, use a Linux filesystem path or fix host permissions before starting the API. It does not reset passwords.
 
 `docker compose down` preserves bind-mounted `data/` and `artifacts-live/`. Avoid deleting these paths; they contain user state and scan evidence. The Docker API runs with a read-only root filesystem, no additional Linux capabilities, and a non-root UID. Its bound data directories must still be writable.
 
@@ -81,6 +82,7 @@ Restore only after stopping the API and verifying the backup's integrity and sou
 | Symptom | Check |
 | --- | --- |
 | Compose refuses startup | Set `FINOVAUNT_BOOTSTRAP_PASSWORD` in a private `.env` with at least 12 characters |
+| Login returns 502 and logs show `PermissionError: /app/data/control-plane.json.tmp` | Recreate with `docker compose up -d --build`; check `docker compose logs init-data`. The initialization helper must finish successfully before the API starts. Never delete `data/control-plane.json` to fix permissions. |
 | Login rejected | Verify persisted `data/control-plane.json`; bootstrap only applies to first setup |
 | Dashboard shows unavailable scan data | Inspect `artifacts-live/`, synchronization status, and `FINOPS_OUTPUT_DIR` |
 | AWS billing/inventory 502 | Check source credentials, trust policy, target account ID and read-only IAM permissions |
