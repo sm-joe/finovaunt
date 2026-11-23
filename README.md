@@ -169,4 +169,4 @@ Automated backend/frontend/Compose CI runs on PRs and pushes. Security scanning 
 
 ## License
 
-The README previously stated MIT; the repository must contain an actual `LICENSE` file and undergo license verification before public stable publication. No official v1.0.0 release is claimed by this document.
+Finovaunt is distributed under the [MIT License](LICENSE). No official stable v1.0.0 release is claimed by this document.
