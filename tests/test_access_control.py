@@ -50,3 +50,24 @@ def test_expired_session_is_rejected(tmp_path, monkeypatch):
     access_control._SESSIONS[token] = (username, 0)
     assert access_control.session(token) is None
     assert not access_control.change_password(token, "initial-test-password-2026", "new-secure-password-2026")
+
+
+def test_account_role_must_match_account_and_removal_purges_history(tmp_path, monkeypatch):
+    import pytest
+    monkeypatch.setenv("FINOVAUNT_BOOTSTRAP_PASSWORD", "initial-test-password-2026")
+    monkeypatch.setenv("FINOVAUNT_CONTROL_FILE", str(tmp_path / "control-plane.json"))
+    with pytest.raises(ValueError, match="onboarded AWS account"):
+        access_control.add_account(
+            "Invalid", "aws", "123456789012",
+            "arn:aws:iam::999999999999:role/ReadOnly", "us-east-1",
+        )
+    account = access_control.add_account(
+        "Production", "aws", "123456789012",
+        "arn:aws:iam::123456789012:role/ReadOnly", "us-east-1",
+    )
+    access_control.save_billing_scan(account["account_id"], {"total_cost": 23.4})
+    assert len(access_control.billing_history("123456789012")) == 1
+    assert access_control.delete_account("123456789012")
+    assert not access_control.delete_account("123456789012")
+    assert access_control.list_accounts() == []
+    assert access_control.billing_history("123456789012") == []
