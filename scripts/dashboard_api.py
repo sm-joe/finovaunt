@@ -86,7 +86,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         route = urlparse(self.path).path.rstrip("/") or "/"
-        if route not in ("/api/auth/login", "/api/auth/logout", "/api/auth/password", "/api/cloud-accounts", "/api/billing-scans", "/api/inventory-scans"):
+        if route not in ("/api/auth/login", "/api/auth/logout", "/api/auth/password", "/api/cloud-accounts", "/api/billing-scans", "/api/inventory-scans", "/api/recommendation-decisions"):
             self._json(405, {"error": "method_not_allowed", "message": "This API endpoint does not accept POST requests."})
             return
         try:
@@ -165,6 +165,40 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "message": f"AWS inventory scan failed ({type(exc).__name__}). Verify IAM read permissions and role trust.",
                 })
             return
+        if route == "/api/recommendation-decisions":
+            run_id = str(body.get("run_id", "")).strip()
+            resource_id = str(body.get("resource_id", "")).strip()
+            decision = str(body.get("decision", "")).strip()
+            note = str(body.get("note", "")).strip()
+            try:
+                evidence = load_artifacts(_artifact_dir())
+                current_run = str(evidence.get("evidence", {}).get("run_id") or "")
+                available = {
+                    item["resource_id"]
+                    for item in build_opportunities(evidence).get("items", [])
+                }
+            except DashboardDataError:
+                self._json(503, {"error": "scan_unavailable", "message": "No current scan evidence is available."})
+                return
+            if not run_id or current_run != run_id:
+                self._json(409, {"error": "stale_scan", "message": "Refresh the dashboard before reviewing recommendations."})
+                return
+            if resource_id not in available:
+                self._json(404, {"error": "recommendation_not_found", "message": "Recommendation is not present in this scan."})
+                return
+            try:
+                result = access_control.record_recommendation_decision(
+                    run_id=run_id,
+                    resource_id=resource_id,
+                    action=decision,
+                    note=note,
+                    reviewed_by=str(current["username"]),
+                )
+            except ValueError as exc:
+                self._json(400, {"error": "invalid_decision", "message": str(exc)})
+                return
+            self._json(201, result)
+            return
         self._json(405, {"error":"method_not_allowed","message":"This API endpoint does not accept POST requests."})
 
     def _cookie_token(self) -> str | None:
@@ -232,6 +266,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if not current: self._json(401, {"error":"unauthorized","message":"Please log in."}); return
             if current.get("must_change_password"): self._json(403, {"error":"password_change_required","message":"Change the default password before continuing."}); return
             self._json(200, {"items":access_control.list_accounts()}); return
+        if route == "/api/recommendation-decisions":
+            current = access_control.session(self._cookie_token())
+            if not current or current.get("must_change_password"):
+                self._json(401, {"error": "unauthorized", "message": "Please sign in."})
+                return
+            requested_run = parse_qs(urlparse(self.path).query).get("run_id", [""])[0]
+            self._json(200, {"items": access_control.recommendation_decisions(requested_run or None)})
+            return
         if route.startswith("/api/inventory-scans/"):
             current = access_control.session(self._cookie_token())
             if not current:

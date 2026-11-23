@@ -87,3 +87,36 @@ def test_cloud_account_delete_requires_authentication(tmp_path, monkeypatch) -> 
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_recommendation_decisions_are_not_public(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("FINOVAUNT_BOOTSTRAP_PASSWORD", "initial-test-password-2026")
+    monkeypatch.setenv("FINOVAUNT_CONTROL_FILE", str(tmp_path / "control-plane.json"))
+    server = ThreadingHTTPServer(("127.0.0.1", 0), dashboard_api.DashboardHandler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        base = f"http://127.0.0.1:{server.server_port}"
+        try:
+            urlopen(f"{base}/api/recommendation-decisions", timeout=2)
+            raise AssertionError("Review decisions must be private")
+        except HTTPError as exc:
+            assert exc.code == 401
+        request = Request(
+            f"{base}/api/recommendation-decisions",
+            method="POST",
+            data=json.dumps({
+                "run_id": "old-run", "resource_id": "i-test",
+                "decision": "approved", "note": "Test note for human approval",
+            }).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            urlopen(request, timeout=2)
+            raise AssertionError("Anonymous reviews must not be accepted")
+        except HTTPError as exc:
+            assert exc.code == 401
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
