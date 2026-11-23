@@ -146,3 +146,28 @@ def test_load_artifacts_reads_existing_artifact_names(tmp_path: Path) -> None:
     result = load_artifacts(tmp_path)
     assert result["evidence"]["run_id"] == "r"
     assert result["history"]["runs"] == []
+
+
+def test_empty_inventory_status_is_visible_without_stale_costs(tmp_path):
+    import json
+    from src.utils.dashboard_data import load_artifacts, build_overview, build_scans
+
+    (tmp_path / "scan_status.json").write_text(json.dumps({
+        "schema_version": 1,
+        "run_id": "no-resources-1",
+        "status": "empty_inventory",
+        "scanned_at": "2026-11-23T00:00:00Z",
+        "warnings": ["No running EC2 or RDS instances were discovered."],
+        "recommendations": 0,
+        "estimated_monthly_savings_usd": 0,
+    }))
+    # Prior artifacts must not bleed into an empty-inventory result.
+    (tmp_path / "cost_evidence.json").write_text(json.dumps({
+        "run_id": "old-run", "resources": [{"resource_id": "stale"}],
+    }))
+    artifacts = load_artifacts(tmp_path)
+    assert artifacts["evidence"]["run_id"] == "no-resources-1"
+    assert artifacts["evidence"]["resources"] == []
+    assert artifacts["evidence"]["scan_provenance"]["status"] == "empty_inventory"
+    assert build_scans(artifacts)["items"][0]["resource_count"] == 0
+    assert build_overview(artifacts)["resource_count"] == 0
