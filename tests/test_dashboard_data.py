@@ -170,4 +170,4 @@ def test_empty_inventory_status_is_visible_without_stale_costs(tmp_path):
     assert artifacts["evidence"]["resources"] == []
     assert artifacts["evidence"]["scan_provenance"]["status"] == "empty_inventory"
     assert build_scans(artifacts)["items"][0]["resource_count"] == 0
-    assert build_overview(artifacts)["resource_count"] == 0
+    assert build_overview(artifacts)["resources_scanned"] == 0
