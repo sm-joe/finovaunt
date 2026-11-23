@@ -9,7 +9,7 @@
 
 Finovaunt brings AWS billing, cloud inventory, cost allocation, Kubernetes usage, and optimization evidence into a cohesive dashboard. It is designed for teams that need to **understand where cloud spend goes, investigate waste, and document decisions** without letting ordinary analytics silently modify infrastructure.
 
-Its collector is **read-only by default**. Findings are supported by observed AWS data; incomplete evidence is labeled accordingly, and recommendations are not misrepresented as realized savings.
+Its standard dashboard collector is **read-only**. Findings are supported by observed AWS data; incomplete evidence is labeled accordingly, and recommendations are not misrepresented as realized savings.
 
 > **Release status** — Active development and production hardening. Green CI indicates tested source, **not** a supported, signed, publicly released stable `v1.0.0`. Review [Release Readiness](RELEASE_READINESS.md) before considering production use.
 
@@ -196,7 +196,7 @@ For other settings and their constraints, see [`.env.example`](.env.example) and
 
 ## Security and safety model
 
-- **Least privilege** — Onboarded IAM roles should only grant required read actions; SDK credentials and External IDs are never frontend form secrets.
+- **Least privilege** — Onboarded IAM roles should only grant required read actions. AWS access keys and session tokens must never be embedded in frontend code; an optional External ID is entered transiently in the protected application when required by role trust.
 - **Protected workspace** — Initial administrator password rotation, session cookies, authenticated scan/review APIs, and account configuration audit records.
 - **No implicit execution** — Cost collection, inventory, optimization reviews, and the dashboard are read-only. Privileged non-production EC2 actions are isolated behind a separately configured opt-in CLI.
 - **Honest cost evidence** — A theoretical storage scenario or low CPU is not a verified saving. EKS and S3 telemetry do not establish directly attributable dollar charges.
