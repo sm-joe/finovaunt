@@ -64,6 +64,7 @@ def test_billing_uses_all_pages_and_preserves_exact_amounts(monkeypatch):
     monkeypatch.setitem(sys.modules, "boto3", types.SimpleNamespace(client=client))
     result = collect_billing(ACCOUNT, today=date(2026, 11, 23), external_id="test-only-id")
     assert len(ce.requests) == 2
+    assert all(x["Filter"]["Dimensions"] == {"Key": "LINKED_ACCOUNT", "Values": ["123456789012"]} for x in ce.requests)
     assert result["pages_collected"] == 2
     assert result["total_cost_exact"] == "1.425000004"
     assert result["total_cost"] == 1.43
