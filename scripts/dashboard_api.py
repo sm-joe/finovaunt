@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import re
@@ -70,8 +71,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if origin in _ALLOWED_ORIGINS:
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
-        self.end_headers()
-        self.wfile.write(encoded)
+        try:
+            self.end_headers()
+            self.wfile.write(encoded)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, socket.timeout):
+            # The caller/proxy timed out or navigated away after the AWS scan
+            # completed. A response cannot be re-sent over this socket.
+            self.close_connection = True
 
     def do_OPTIONS(self) -> None:
         origin = self.headers.get("Origin")
@@ -177,12 +183,19 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 from src.tools.inventory_service import collect_inventory
                 inventory = collect_inventory(account, external_id=str(body.get("external_id", "")))
                 result = access_control.save_inventory_scan(account_id, inventory)
-                self._json(200, result)
             except Exception as exc:
-                self._json(502, {
-                    "error": "inventory_scan_failed",
-                    "message": f"AWS inventory scan failed ({type(exc).__name__}). Verify IAM read permissions and role trust.",
-                })
+                # Only collection/persistence failures are AWS scan failures.
+                # A disconnected HTTP client must not trigger a second reply.
+                from src.tools.aws_errors import AWSAccessError
+                if isinstance(exc, AWSAccessError):
+                    self._json(502, exc.public_payload())
+                else:
+                    self._json(502, {
+                        "error": "inventory_scan_failed",
+                        "message": "Inventory collection failed. Verify read permissions, AWS connectivity, and the configured region.",
+                    })
+                return
+            self._json(200, result)
             return
         if route == "/api/recommendation-decisions":
             run_id = str(body.get("run_id", "")).strip()

@@ -264,3 +264,39 @@ def test_live_dashboard_never_depends_on_scan_artifact_or_invents_spend(tmp_path
         server.shutdown()
         server.server_close()
         thread.join(timeout=3)
+
+
+def test_json_disconnected_client_is_not_reported_as_aws_scan_failure():
+    """An already disconnected frontend cannot accept a second HTTP error."""
+    from io import BytesIO
+    from unittest.mock import Mock
+
+    handler = object.__new__(dashboard_api.DashboardHandler)
+    handler.headers = {}
+    handler.send_response = Mock()
+    handler.send_header = Mock()
+    handler.end_headers = Mock()
+    handler.wfile = Mock()
+    handler.wfile.write.side_effect = BrokenPipeError(32, "Broken pipe")
+    handler.close_connection = False
+
+    # The inventory collector may already have persisted its results when
+    # nginx times out. Serializing the response must not raise.
+    handler._json(200, {"status": "success", "asset_count": 8})
+    assert handler.close_connection is True
+    assert handler.send_response.call_count == 1
+    handler.wfile.write.assert_called_once()
+
+
+def test_json_connection_reset_is_handled_without_retrying_response():
+    from unittest.mock import Mock
+    handler = object.__new__(dashboard_api.DashboardHandler)
+    handler.headers = {}
+    handler.send_response = Mock()
+    handler.send_header = Mock()
+    handler.end_headers = Mock(side_effect=ConnectionResetError(104, "Peer reset"))
+    handler.wfile = Mock()
+    handler.close_connection = False
+    handler._json(200, {"status": "success"})
+    assert handler.close_connection is True
+    assert handler.send_response.call_count == 1
