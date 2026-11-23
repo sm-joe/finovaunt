@@ -50,6 +50,7 @@ def account_dashboard(account_id: str) -> dict | None:
         "billing": latest_billing,
         "inventory": latest_inventory,
         "ebs_reviews": access_control.ebs_reviews(account_id),
+        "optimization_history": access_control.optimization_history(account_id),
         "billing_history": [
             {"id": scan["id"], "scanned_at": scan.get("scanned_at"),
              "period_start": scan.get("period_start"),

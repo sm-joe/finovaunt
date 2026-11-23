@@ -114,6 +114,14 @@ Minimum additional target role IAM permissions (read-only) are `pricing:GetProdu
 
 Human review is independent of execution: `POST /api/ebs-reviews` records `account_id`, the **current** inventory scan ID, unattached volume ID, decision (`approved_for_manual_review` or `rejected`) and an evidence-based note. `GET /api/ebs-reviews?account_id=...` retrieves the account's local audit trail. Reviews save a timestamp, user, and `infrastructure_applied=false`; they never execute AWS API mutations, Kubernetes commands, or Terraform apply. A stale scan or attached volume cannot be reviewed via this endpoint.
 
+## Optimization history after EBS cleanup
+
+Finovaunt now keeps a per-account, per-region historical EBS candidate ledger independent of the latest inventory scan. It records initial and last observation, scan IDs, observed state, real pricing/PV evidence if collected, and whether a volume is still unattached, subsequently attached, or simply **not observed in the latest complete inventory**.
+
+A volume missing in a complete scan is **not** proven deleted; the same symptom can reflect a role, region, ownership or AWS inventory change. Partial/truncated scans never assert disappearance. No historic finding is counted as verified savings. To establish realized savings, independent lifecycle/change evidence and dated post-change billing verification would still be required.
+
+Older installations are backfilled **only** from saved, real inventory scans already present in `data/control-plane.json`. Deleted EBS volumes that appeared in those retained scans remain in history, but Finovaunt cannot recreate evidence that was never collected or has been purged. The dashboard lists historical findings separately from current candidates. Account deletion removes that account's history.
+
 ## Scan artifacts
 
 The dashboard displays the latest synced or locally provided artifact snapshot under `artifacts-live/`. Without a real snapshot, its data endpoints deliberately report unavailable evidence rather than inventing savings.
