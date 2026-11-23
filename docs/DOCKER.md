@@ -56,6 +56,28 @@ Prefer deploying the API on a host/orchestrator that supplies a short-lived work
 
 The GitHub Actions OIDC scanner uses its own configured AWS role and region; it is not automatically connected to every dashboard-onboarded account. Do not conflate these two collection paths.
 
+## Live AWS Dashboard (No Mock Data)
+
+The primary dashboard now reads **actual Cost Explorer and regional EC2/RDS/EBS collection results** from the local control-plane database. It no longer requires `cost_evidence.json`, `FINOPS_OUTPUT_DIR`, or GitHub Actions artifacts to display an onboarded account. Historical GitHub scan-artifact endpoints remain separate for compatibility.
+
+1. Log in and complete the initial password rotation.
+2. Open **Cloud Accounts → Onboard AWS account**. Provide the 12-digit account ID, a trusted read-only IAM role ARN in the target account, and the AWS region. Account onboarding does not by itself mean AWS access is working.
+3. Supply an AWS **source credential chain** to the API container. The source identity must be able to call `sts:AssumeRole` on the target role; configure the target role's trust policy accordingly. The target role must allow `ce:GetCostAndUsage`, `ec2:DescribeInstances`, `ec2:DescribeVolumes`, and `rds:DescribeDBInstances`. If the role requires an External ID, enter it when collecting; the UI does not persist it.
+4. Return to **Dashboard**, select the account, and click **Collect Live AWS Data**. Billing and inventory collect independently. The dashboard shows the last successful AWS responses and their timestamps; missing or failed collections remain explicitly unavailable.
+
+For temporary local development, pass **short-lived** AWS session credentials exported in your Bash environment to Docker Compose:
+
+```bash
+export AWS_ACCESS_KEY_ID='...'
+export AWS_SECRET_ACCESS_KEY='...'
+export AWS_SESSION_TOKEN='...'
+docker compose up -d --build --force-recreate api frontend
+```
+
+Do not commit these credentials to a file or share them in logs. Environment variables may be visible in container inspection; use an AWS instance/task/pod workload identity or an appropriate credential provider for a production deployment instead. The source identity and target assumed role must be separate where applicable. A signed-in dashboard session does not automatically confer AWS API permissions.
+
+**Correct absence semantics:** No onboarded accounts → onboarding prompt; no completed billing collection → no amount; successful empty AWS response → zero observed resources or charges as returned; failed or permission-denied collection → descriptive error with no fabricated totals. Cost Explorer reports account/service totals only, not resource-level spend. An unattached EBS volume is a review candidate, not a verified saving. Data is persisted from AWS responses and is not a continuously streaming connection; use **Collect Live AWS Data** to capture a new snapshot.
+
 ## Scan artifacts
 
 The dashboard displays the latest synced or locally provided artifact snapshot under `artifacts-live/`. Without a real snapshot, its data endpoints deliberately report unavailable evidence rather than inventing savings.
