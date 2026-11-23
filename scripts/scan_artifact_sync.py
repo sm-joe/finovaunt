@@ -202,7 +202,7 @@ def sync_latest_scan(output_dir: Path, *, token: str, repository: str, workflow:
                 "scan_run_id": status["run_id"],
                 "synced_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             }
-            marker.write_text(json.dumps(marker_data, indent=2) + "\\n", encoding="utf-8")
+            marker.write_text(json.dumps(marker_data, indent=2) + "\n", encoding="utf-8")
             return {"status": "synced", "scan_status": "empty_inventory", **marker_data}
 
         (output_dir / "scan_status.json").unlink(missing_ok=True)
