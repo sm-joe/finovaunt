@@ -1,0 +1,88 @@
+/* Consistent Finovaunt authentication and account management surfaces. */
+.fv-auth-experience{min-height:100vh;display:grid;grid-template-columns:minmax(350px,46%) minmax(0,1fr);background:#f7f9fd;font-family:"DM Sans",system-ui,sans-serif;color:#14233f}
+.fv-auth-brand-panel{min-height:100vh;padding:42px clamp(36px,4.3vw,88px) 32px;background:radial-gradient(circle at 8% 85%,#244b8d55,transparent 42%),radial-gradient(circle at 90% 10%,#2875e22c,transparent 41%),linear-gradient(145deg,#0c1930,#112243 70%,#0e1b34);color:#fff;display:flex;flex-direction:column}
+.fv-auth-logo{display:flex;align-items:center;gap:13px}.fv-auth-logo>span{width:52px;height:52px;background:linear-gradient(138deg,#60d3f2,#3b65f0);border-radius:13px;display:grid;place-items:center;box-shadow:0 10px 30px #3475e834}
+.fv-auth-logo>div{display:grid;gap:3px}.fv-auth-logo strong{font-family:Manrope,system-ui,sans-serif;font-size:25px;letter-spacing:-.7px}.fv-auth-logo small{font-size:11px;color:#a5bbdb}
+.fv-auth-story{margin:auto 0;max-width:580px;padding:52px 0}.fv-auth-eyebrow{display:flex;gap:8px;align-items:center;font-size:11px;letter-spacing:1.55px;font-weight:800;color:#a9bee4}
+.fv-auth-eyebrow span{display:block;width:7px;height:7px;border-radius:50%;background:#5ec4fc;box-shadow:0 0 0 4px #5ec4fc24}
+.fv-auth-story h2{font-family:Manrope,system-ui,sans-serif;font-size:clamp(31px,3.3vw,54px);line-height:1.19;letter-spacing:-1.7px;font-weight:800;margin:22px 0}
+.fv-auth-story h2 em{font-style:normal;background:linear-gradient(95deg,#68d8fa,#94a8ff);color:transparent;background-clip:text}
+.fv-auth-story>p{max-width:420px;font-size:14px;line-height:1.9;color:#bed0e9;margin:0 0 40px}
+.fv-auth-preview{display:grid;gap:10px;max-width:430px}.fv-auth-preview>div{display:flex;gap:15px;align-items:center;padding:14px 16px;background:#ffffff0c;border:1px solid #ffffff1d;border-radius:11px}
+.fv-auth-preview svg{color:#80b8ff;flex-shrink:0}.fv-auth-preview span{display:grid;gap:4px}.fv-auth-preview strong{font-size:12px}.fv-auth-preview small{font-size:11px;color:#9cb5d6}
+.fv-auth-brand-panel footer{font-size:10px;font-weight:750;color:#7891b7;letter-spacing:1.7px}.fv-auth-brand-panel footer span{margin:0 8px;color:#5371a1}
+.fv-auth-form-area{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:66px 34px}
+.fv-auth-form-inner{width:min(100%,420px)}.fv-page-kicker{font-size:10px;color:#3c6ed9;font-weight:800;letter-spacing:1.5px}
+.fv-auth-form-inner h1{font-family:Manrope,system-ui,sans-serif;font-size:30px;line-height:1.26;letter-spacing:-1.05px;color:#152641;margin:12px 0 9px}
+.fv-auth-description{color:#7c8ba3;font-size:13px;line-height:1.6;margin:0 0 28px}
+.fv-auth-form{display:grid;gap:20px}.fv-auth-form label,.fv-managed-form label,.fv-form-compact{font-size:12px;font-weight:700;color:#3b4e69;display:grid;gap:8px}
+.fv-auth-form input,.fv-managed-form input,.fv-managed-form select,.fv-managed-form textarea,.fv-form-compact input{font:inherit;font-weight:450;font-size:13px;width:100%;min-width:0;padding:12px 13px;border:1px solid #dce4f0;border-radius:9px;color:#1d3456;background:#fff;outline:none;box-shadow:0 2px 6px #213d6305}
+.fv-auth-form input:focus,.fv-managed-form input:focus,.fv-managed-form select:focus,.fv-managed-form textarea:focus,.fv-form-compact input:focus{border-color:#4479e8;box-shadow:0 0 0 3px #316ef01b}
+.fv-auth-form input::placeholder,.fv-managed-form input::placeholder{color:#a1aec2}
+.fv-password-control{position:relative}.fv-password-control input{padding-right:45px}.fv-password-visibility{position:absolute;top:50%;right:12px;transform:translateY(-50%);display:grid;place-items:center;background:transparent;border:0;color:#788ca9;padding:6px}
+.fv-password-visibility:hover{color:#285ed9}
+.fv-auth-submit{height:46px;margin-top:5px;width:100%;justify-content:center;font-size:13px!important}
+.fv-auth-submit svg{margin-left:3px}.fv-auth-trust{position:absolute;bottom:28px;text-align:center;color:#8091aa;font-size:10px;display:flex;gap:8px;align-items:center;justify-content:center}
+.fv-auth-trust svg{color:#239f84}.fv-auth-instructions{display:flex;align-items:start;gap:10px;border:1px solid #e2e9f4;border-radius:10px;background:#f0f5fc;padding:14px;margin-top:27px}
+.fv-auth-instructions svg{flex-shrink:0;color:#467be0}.fv-auth-instructions p{margin:0;font-size:11px;line-height:1.65;color:#5e738e}.fv-auth-instructions strong{color:#324b72}
+.fv-auth-message{display:flex;align-items:start;gap:10px;padding:12px 14px;font-size:12px;line-height:1.6;border-radius:9px;margin:0 0 19px;max-width:100%}
+.fv-auth-message.success{background:#eaf9f2;border:1px solid #cde9de;color:#187c5d}
+.fv-auth-message.error{background:#fff1ee;border:1px solid #f2d4ce;color:#aa493f}
+.fv-auth-message.info{background:#edf4ff;border:1px solid #d8e5fa;color:#35629c}
+.fv-auth-message svg{flex-shrink:0}.fv-inline-dismiss{border:0;background:transparent;color:inherit;text-decoration:underline;cursor:pointer;margin-left:auto}
+.fv-account-shell{min-height:100vh;background:#f5f7fb}
+.fv-account-topbar{justify-content:space-between}.fv-account-breadcrumb{display:flex;gap:10px;align-items:center;color:#8a9ab0;font-size:12px}.fv-account-breadcrumb strong{font-size:13px;color:#233753}.fv-account-breadcrumb>span:nth-child(2){color:#bdcadc}
+.fv-account-page{max-width:1770px;padding:28px 26px 50px}
+.fv-page-heading{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:25px}
+.fv-page-heading h1{font-family:Manrope,system-ui,sans-serif;font-size:27px;color:#122342;letter-spacing:-.8px;line-height:1.4;margin:7px 0 6px}
+.fv-page-heading .fv-aws-tag{vertical-align:middle;font-size:10px;margin-left:7px}.fv-page-heading p{margin:0;color:#7a8ba3;font-size:12px}
+.fv-cloud-workspace{display:grid;gap:17px}.fv-account-card{min-width:0;background:#fff;border:1px solid #e1e8f2;border-radius:12px;padding:22px;box-shadow:0 2px 8px #0d356508}
+.fv-card-headline{display:flex;align-items:center;gap:11px;padding:0 0 17px;margin-bottom:17px;border-bottom:1px solid #edf0f6}
+.fv-card-headline>svg{color:#2e6bee;background:#edf3ff;width:36px;height:36px;border-radius:9px;padding:9px;flex-shrink:0}
+.fv-card-headline>div{min-width:0}.fv-card-headline h2{font-size:15px;letter-spacing:-.3px;color:#1e3555;margin:0 0 4px;font-family:Manrope,system-ui,sans-serif}
+.fv-card-headline p{font-size:11px;color:#8a9aaf;line-height:1.5;margin:0}
+.fv-cloud-toolbar{display:flex;align-items:center;justify-content:space-between;gap:15px}
+.fv-cloud-toolbar>div>strong{font-family:Manrope,system-ui,sans-serif;color:#213655;font-size:16px}
+.fv-cloud-toolbar p{font-size:11px;margin:5px 0 0;color:#8191a8}
+.fv-cloud-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}
+.fv-cloud-stats>div{min-width:0;padding:18px;background:#fff;border:1px solid #e1e8f2;border-radius:11px;display:grid;gap:6px;box-shadow:0 2px 7px #0c2c5606}
+.fv-cloud-stats span{font-size:11px;font-weight:650;color:#6e819c}.fv-cloud-stats strong{font-family:Manrope,system-ui,sans-serif;font-size:clamp(16px,1.55vw,23px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#203552}
+.fv-cloud-stats small{font-size:10px;color:#9baaBD}
+.fv-cloud-grid,.fv-settings-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:17px;align-items:start}
+.fv-account-list{display:grid;gap:8px;max-height:520px;overflow:auto}.fv-account-list-item{width:100%;background:#fff;border:1px solid #e5ebf5;border-radius:10px;display:flex;gap:13px;align-items:center;text-align:left;padding:13px;min-width:0;color:#7287a3}
+.fv-account-list-item:hover{border-color:#b8caee;background:#f8fbff}
+.fv-account-list-item.selected{border-color:#7da5fa;background:#f1f6ff;box-shadow:inset 3px 0 #2e68ee}
+.fv-provider-symbol{display:grid;place-items:center;background:#e9f2ff;color:#3272de;width:38px;height:38px;border-radius:9px;flex-shrink:0}
+.fv-account-list-info{display:grid;gap:5px;flex:1;min-width:0}.fv-account-list-info strong{font-size:12px;color:#203959;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fv-account-list-info small{font-size:11px;color:#7f91ab}.fv-selected-icon{color:#2465e8}
+.fv-cloud-empty{display:grid;place-items:center;text-align:center;gap:10px;min-height:170px;color:#8ea0b5;padding:18px 12px}
+.fv-cloud-empty>svg{color:#8ba9d9}.fv-cloud-empty strong{font-size:12px;color:#405778}.fv-cloud-empty p{margin:0;font-size:11px;color:#8494ad;max-width:280px;line-height:1.7}
+.fv-cloud-details{display:grid;grid-template-columns:1fr 1fr;gap:17px;margin-bottom:17px}
+.fv-cloud-details>div{display:grid;gap:6px;min-width:0}.fv-cloud-details span{font-size:10px;color:#8394a9}
+.fv-cloud-details strong{font-size:12px;color:#2b3f60;overflow-wrap:anywhere}
+.fv-cloud-details .fv-detail-full{grid-column:1/-1;background:#f7f9fd;border:1px solid #e8edf7;border-radius:8px;padding:12px}
+.fv-cloud-details code{font-size:11px;color:#3b5f8c;overflow-wrap:anywhere;white-space:normal}
+.fv-pill-active{background:#e4f8ef;color:#19885e;width:max-content}
+.fv-form-compact{margin:0 0 15px}.fv-cloud-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:15px 0 10px}
+.fv-danger-link{display:inline-flex;align-items:center;gap:7px;color:#c04d58;background:none;border:0;padding:6px 0;font-size:11px;font-weight:700}
+.fv-danger-link:hover{text-decoration:underline}.fv-danger-link:disabled{opacity:.55}
+.fv-managed-form{display:grid;gap:15px}.fv-managed-form label small{font-size:10px;font-weight:400;color:#8799ae}
+.fv-form-columns{grid-template-columns:repeat(2,minmax(0,1fr));gap:17px}.fv-field-wide{grid-column:1/-1}
+.fv-form-actions{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.fv-help-text{font-size:10px;color:#8295ae;margin:16px 0 0;display:flex;align-items:start;gap:8px;line-height:1.65}
+.fv-help-text svg{color:#399b81;flex-shrink:0}.fv-evidence-summary{display:grid;gap:6px;background:linear-gradient(120deg,#f3f7ff,#f8faff);border:1px solid #e3ebfc;border-radius:10px;padding:17px;margin-bottom:13px}
+.fv-evidence-summary strong{font-family:Manrope,system-ui,sans-serif;font-size:23px;color:#1a376b}
+.fv-evidence-summary span{font-size:10px;color:#8293b0}
+.fv-evidence-table{display:grid;max-height:360px;overflow:auto}.fv-evidence-table>div{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:11px 2px;border-bottom:1px solid #edf1f8;font-size:11px;color:#647892}
+.fv-evidence-table strong{font-size:11px;color:#253c5d}.fv-evidence-table>div>span:first-child{min-width:0;overflow-wrap:anywhere}
+.fv-evidence-table>div>span:first-child small{display:block;font-size:10px;color:#8d9db2;margin-top:5px}
+.fv-settings-grid .fv-managed-form{max-width:560px}.fv-profile-identity{display:flex;gap:13px;align-items:center;padding-bottom:17px;border-bottom:1px solid #edf1f8;margin-bottom:6px}
+.fv-profile-identity>.fv-avatar{width:48px;height:48px;font-size:15px;flex-shrink:0}.fv-profile-identity>div{display:grid;gap:4px;flex:1}
+.fv-profile-identity>div strong{font-size:13px;color:#273e5e}.fv-profile-identity>div small{font-size:11px;color:#90a0b5}
+.fv-setting-row{display:flex;justify-content:space-between;gap:15px;border-bottom:1px solid #f0f2f7;padding:14px 0;font-size:11px}
+.fv-setting-row span{color:#7889a2}.fv-setting-row strong{color:#294160;font-size:11px}
+.fv-account-page button:focus-visible,.fv-auth-experience button:focus-visible,.fv-account-page input:focus-visible,.fv-account-page select:focus-visible,.fv-account-page textarea:focus-visible{outline:3px solid #5e9cfa;outline-offset:2px}
+@media(max-width:1150px){.fv-auth-brand-panel{padding:32px 38px}.fv-auth-story h2{font-size:35px}.fv-cloud-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:850px){.fv-auth-experience{grid-template-columns:1fr}.fv-auth-brand-panel{min-height:auto;padding:25px 24px}.fv-auth-story,.fv-auth-brand-panel footer{display:none}.fv-auth-form-area{min-height:calc(100vh - 101px);padding:52px 24px 75px}.fv-auth-trust{bottom:22px}.fv-account-page{padding:23px 17px 45px}.fv-cloud-grid,.fv-settings-grid{grid-template-columns:1fr}}
+@media(max-width:740px){.fv-account-shell .sidebar.fv-sidebar{width:65px;top:0;height:100vh}.fv-account-shell .main.fv-main{width:calc(100% - 65px);margin-left:65px}.fv-account-topbar{padding:12px}.fv-account-topbar .fv-readonly{display:none}.fv-page-heading{flex-direction:column;align-items:start}.fv-page-heading h1{font-size:23px}.fv-cloud-toolbar{flex-wrap:wrap}.fv-cloud-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.fv-form-columns{grid-template-columns:1fr}.fv-field-wide{grid-column:1}.fv-cloud-details{gap:12px}.fv-cloud-actions{align-items:stretch}.fv-card-headline{align-items:start}.fv-account-card{padding:16px}.fv-cloud-toolbar>.fv-primary-button{width:100%}}
+@media(max-width:450px){.fv-auth-logo strong{font-size:20px}.fv-auth-logo>span{width:43px;height:43px}.fv-auth-form-inner h1{font-size:25px}.fv-auth-form-area{padding:42px 18px 80px}.fv-cloud-stats{grid-template-columns:1fr 1fr;gap:7px}.fv-cloud-stats>div{padding:12px}.fv-cloud-stats strong{font-size:16px}.fv-account-page{padding:18px 10px}.fv-cloud-actions>button{flex:1}.fv-auth-trust{font-size:9px}}
