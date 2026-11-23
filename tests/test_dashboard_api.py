@@ -224,6 +224,18 @@ def test_live_dashboard_never_depends_on_scan_artifact_or_invents_spend(tmp_path
         with browser.open(login, timeout=3) as response:
             assert json.loads(response.read())["authenticated"] is True
 
+        # Fresh installs must rotate the bootstrap secret before viewing billing.
+        rotate = Request(
+            f"{base}/api/auth/password", method="POST",
+            data=json.dumps({
+                "current_password": "initial-test-password-2026",
+                "new_password": "rotated-test-password-2026",
+            }).encode(),
+            headers={"Content-Type":"application/json"},
+        )
+        with browser.open(rotate, timeout=3) as response:
+            assert json.loads(response.read())["authenticated"] is True
+
         with browser.open(f"{base}/api/live-dashboard?account_id=123456789012", timeout=3) as response:
             payload = json.loads(response.read())
         assert payload["source"] == "aws_collected"
