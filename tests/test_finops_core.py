@@ -83,7 +83,7 @@ def test_eks_discovery_requires_real_workload_evidence(monkeypatch):
     monkeypatch.setattr(finops_core, "_client", lambda *args: EKS())
     output = finops_core.collect_eks({"region": "us-east-1"}, {})
     assert output["clusters"][0]["namespace_costs"] is None
-    assert output["clusters"][0]["allocation_status"] == "requires_workload_usage_and_cost_data"
+    assert output["clusters"][0]["allocation_status"] == "requires_verified_cluster_cost_and_shared_cost_model"
 
 
 def test_disabled_nonproduction_schedule_cannot_execute_changes():
