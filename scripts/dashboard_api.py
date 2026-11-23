@@ -155,11 +155,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 result = access_control.save_billing_scan(account_id, evidence)
                 self._json(200, result)
             except Exception as exc:
-                # Never expose role credentials, SDK exception messages, or account secrets.
-                self._json(502, {
-                    "error": "billing_scan_failed",
-                    "message": f"AWS billing scan failed ({type(exc).__name__}). Check role trust and Cost Explorer read permissions.",
-                })
+                # ClientError's raw message can include principal ARNs, policy
+                # statements and other environment data. Return only a
+                # classified stage/code and a fixed remediation guide.
+                from src.tools.aws_errors import AWSAccessError
+                if isinstance(exc, AWSAccessError):
+                    self._json(502, exc.public_payload())
+                else:
+                    self._json(502, {
+                        "error": "billing_scan_failed",
+                        "message": "AWS billing collection failed without usable evidence. Check the API service logs and AWS account configuration.",
+                    })
             return
         if route == "/api/inventory-scans":
             account_id = str(body.get("account_id", ""))
