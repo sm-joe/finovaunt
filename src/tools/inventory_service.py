@@ -38,13 +38,47 @@ def collect_inventory(account: dict, *, external_id: str = "", max_assets: int =
     rds = boto3.client("rds", region_name=region, **session_kwargs)
     assets: list[dict] = []
     truncated = False
+    observed_counts = {"ebs": 0, "ec2": 0, "rds": 0}
+    collected_counts = {"ebs": 0, "ec2": 0, "rds": 0}
 
     def add(item: dict) -> None:
         nonlocal truncated
+        kind = item["type"]
+        observed_counts[kind] += 1
         if len(assets) < max_assets:
             assets.append(item)
+            collected_counts[kind] += 1
         else:
             truncated = True
+
+    # Prioritize volume evidence so a large fleet of EC2/RDS resources
+    # cannot silently consume the cap before the EBS safety review.
+    # Counts still reflect every observed resource (even if omitted).
+    for page in ec2.get_paginator("describe_volumes").paginate():
+        for volume in page.get("Volumes", []):
+            tags = {str(tag.get("Key")): str(tag.get("Value")) for tag in volume.get("Tags", [])}
+            add({
+                "id": str(volume["VolumeId"]),
+                "type": "ebs",
+                "name": tags.get("Name") or str(volume["VolumeId"]),
+                "state": str(volume.get("State", "unknown")),
+                "size": f"{volume.get('Size', 0)} GiB / {volume.get('VolumeType', 'unknown')}",
+                "region": region,
+                "size_gib": int(volume.get("Size", 0)),
+                "volume_type": str(volume.get("VolumeType", "unknown")),
+                "iops": volume.get("Iops"),
+                "throughput": volume.get("Throughput"),
+                "availability_zone": volume.get("AvailabilityZone"),
+                "encrypted": bool(volume.get("Encrypted", False)),
+                "created_at": volume.get("CreateTime").isoformat() if volume.get("CreateTime") else None,
+                "tags": tags,
+                "attachments": [
+                    {"instance_id": a.get("InstanceId"), "state": a.get("State")}
+                    for a in volume.get("Attachments", [])
+                ],
+                "cost_status": "not_attributed",
+                "recommendation": "review_only" if volume.get("State") == "available" else "not_assessed",
+            })
 
     for page in ec2.get_paginator("describe_instances").paginate():
         for reservation in page.get("Reservations", []):
@@ -74,32 +108,6 @@ def collect_inventory(account: dict, *, external_id: str = "", max_assets: int =
                 "recommendation": "not_assessed",
             })
 
-    for page in ec2.get_paginator("describe_volumes").paginate():
-        for volume in page.get("Volumes", []):
-            tags = {str(tag.get("Key")): str(tag.get("Value")) for tag in volume.get("Tags", [])}
-            add({
-                "id": str(volume["VolumeId"]),
-                "type": "ebs",
-                "name": tags.get("Name") or str(volume["VolumeId"]),
-                "state": str(volume.get("State", "unknown")),
-                "size": f"{volume.get('Size', 0)} GiB / {volume.get('VolumeType', 'unknown')}",
-                "region": region,
-                "size_gib": int(volume.get("Size", 0)),
-                "volume_type": str(volume.get("VolumeType", "unknown")),
-                "iops": volume.get("Iops"),
-                "throughput": volume.get("Throughput"),
-                "availability_zone": volume.get("AvailabilityZone"),
-                "encrypted": bool(volume.get("Encrypted", False)),
-                "created_at": volume.get("CreateTime").isoformat() if volume.get("CreateTime") else None,
-                "tags": tags,
-                "attachments": [
-                    {"instance_id": a.get("InstanceId"), "state": a.get("State")}
-                    for a in volume.get("Attachments", [])
-                ],
-                "cost_status": "not_attributed",
-                "recommendation": "review_only" if volume.get("State") == "available" else "not_assessed",
-            })
-
     optimization = {"pricing_status": "not_collected", "kubernetes_status": "not_verified"}
     try:
         from src.tools.ebs_optimization import enrich_ebs
@@ -123,6 +131,10 @@ def collect_inventory(account: dict, *, external_id: str = "", max_assets: int =
         "scanned_at": datetime.now(timezone.utc).isoformat(),
         "status": "partial" if truncated else ("empty_inventory" if not assets else "success"),
         "asset_count": len(assets),
+        "observed_counts": observed_counts,
+        "collected_counts": collected_counts,
+        "observed_total": sum(observed_counts.values()),
+        "resource_cap": max_assets,
         "truncated": truncated,
         "assets": assets,
         "read_only": True,
