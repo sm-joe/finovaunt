@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Cloud, LogOut, UserRound, ShieldCheck, ArrowLeft, RefreshCw, Layers3, Home, Settings2, Eye, EyeOff, LockKeyhole, ArrowRight, Server, ChartNoAxesCombined, CircleCheck, KeyRound, Database, Plus, Pencil, Trash2, HardDrive, CircleHelp } from "lucide-react";
+import { Cloud, LogOut, UserRound, ShieldCheck, ArrowLeft, RefreshCw, Layers3, Home, Settings2, Eye, EyeOff, LockKeyhole, ArrowRight, Wallet, Server, ChartNoAxesCombined, CircleCheck, KeyRound, Database, Plus, Pencil, Trash2, HardDrive, CircleHelp } from "lucide-react";
 import App from "./App";
 import "./auth.css";
 import "./auth-enterprise.css";
@@ -114,16 +114,73 @@ export default function AuthenticatedShell() {
   </>;
 }
 
-function LoginScreen({ onLogin, busy, error }: { onLogin: (u: string, p: string) => Promise<void>; busy: boolean; error: string }) {
-  const [username, setUsername] = useState("admin"); const [password, setPassword] = useState("");
-  function submit(e: FormEvent) { e.preventDefault(); void onLogin(username, password); }
-  return <div className="fin-auth-page"><section className="fin-auth-card"><div className="fin-auth-mark"><ShieldCheck size={23}/></div><span className="fin-auth-kicker">AUTONOMOUS FINOPS</span><h1>Welcome to Finovaunt</h1><p>Sign in to your cloud cost intelligence workspace.</p><form onSubmit={submit}><label>Username<input autoComplete="username" value={username} onChange={e=>setUsername(e.target.value)} required/></label><label>Password<input type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} required/></label>{error && <div className="fin-form-error" role="alert">{error}</div>}<button className="fin-primary" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button></form><small>First login: username <code>admin</code> and the bootstrap password configured by the administrator.</small></section></div>;
+function AuthExperience({children,eyebrow,title,description}:{children:React.ReactNode;eyebrow:string;title:string;description:string}) {
+  return <main className="fv-auth-experience">
+    <aside className="fv-auth-brand-panel">
+      <div className="fv-auth-logo"><span><Layers3 size={28}/></span><div><strong>Finovaunt</strong><small>AWS FinOps Platform</small></div></div>
+      <div className="fv-auth-story">
+        <div className="fv-auth-eyebrow"><span/> AWS FINANCIAL OPERATIONS</div>
+        <h2>Clear visibility.<br/><em>Smarter cloud decisions.</em></h2>
+        <p>Bring AWS spending, optimization evidence, and Kubernetes resource visibility into one focused workspace.</p>
+        <div className="fv-auth-preview" aria-label="Platform capabilities">
+          <div><Wallet size={20}/><span><strong>Cost intelligence</strong><small>Account-level billing and allocation</small></span></div>
+          <div><ChartNoAxesCombined size={20}/><span><strong>Optimization insights</strong><small>Evidence-backed opportunities</small></span></div>
+          <div><ShieldCheck size={20}/><span><strong>Secure by default</strong><small>Read-only AWS collector</small></span></div>
+        </div>
+      </div>
+      <footer>FINOVAUNT <span>·</span> BUILT FOR AWS FINOPS</footer>
+    </aside>
+    <div className="fv-auth-form-area"><div className="fv-auth-form-inner">
+      <span className="fv-page-kicker">{eyebrow}</span>
+      <h1>{title}</h1><p className="fv-auth-description">{description}</p>
+      {children}
+    </div><span className="fv-auth-trust"><ShieldCheck size={15}/> Secure session · AWS credentials are never entered in this form</span></div>
+  </main>;
 }
 
-function PasswordScreen({ onDone, busy, setBusy }: { onDone: () => Promise<void>; busy: boolean; setBusy: (v: boolean) => void }) {
-  const [current, setCurrent] = useState(""); const [next, setNext] = useState(""); const [confirm, setConfirm] = useState(""); const [error, setError] = useState("");
-  async function submit(e: FormEvent) { e.preventDefault(); setError(""); if (next.length < 12) { setError("Use at least 12 characters for your new password."); return; } if (next !== confirm) { setError("The new passwords do not match."); return; } setBusy(true); try { await request("/api/auth/password", { method: "POST", body: JSON.stringify({ current_password: current, new_password: next }) }); await onDone(); } catch (err) { setError(err instanceof Error ? err.message : "Password change failed."); } finally { setBusy(false); } }
-  return <div className="fin-auth-page"><section className="fin-auth-card"><div className="fin-auth-mark"><ShieldCheck size={23}/></div><span className="fin-auth-kicker">ACCOUNT SECURITY</span><h1>Change your password</h1><p>Before continuing, replace your initial password with a secure password of at least 12 characters. You will remain signed in after the change.</p><form onSubmit={submit}><label>Current password<input type="password" autoComplete="current-password" value={current} onChange={e=>setCurrent(e.target.value)} required/></label><label>New password<input type="password" autoComplete="new-password" minLength={12} value={next} onChange={e=>setNext(e.target.value)} required/></label><label>Confirm new password<input type="password" autoComplete="new-password" minLength={12} value={confirm} onChange={e=>setConfirm(e.target.value)} required/></label>{error && <div className="fin-form-error" role="alert">{error}</div>}<button className="fin-primary" disabled={busy}>{busy ? "Saving…" : "Change password"}</button></form></section></div>;
+function LoginScreen({onLogin,busy,error,signedOut}:{onLogin:(u:string,p:string)=>Promise<void>;busy:boolean;error:string;signedOut:boolean}) {
+  const [username,setUsername]=useState("admin");
+  const [password,setPassword]=useState("");
+  const [visible,setVisible]=useState(false);
+  function submit(event:FormEvent) {event.preventDefault();void onLogin(username,password);}
+  return <AuthExperience eyebrow="WELCOME BACK" title="Sign In To Finovaunt" description="Access your AWS cloud cost and optimization workspace.">
+    {signedOut && <div className="fv-auth-message success" role="status"><CircleCheck size={18}/> You have signed out securely.</div>}
+    {error && <div className="fv-auth-message error" role="alert">{error}</div>}
+    <form onSubmit={submit} className="fv-auth-form">
+      <label htmlFor="fv-login-username">Username<input id="fv-login-username" autoComplete="username" required value={username} onChange={event=>setUsername(event.target.value)}/></label>
+      <label htmlFor="fv-login-password">Password<div className="fv-password-control"><input id="fv-login-password" type={visible?"text":"password"} autoComplete="current-password" required value={password} onChange={event=>setPassword(event.target.value)}/>
+        <button type="button" className="fv-password-visibility" title={visible?"Hide password":"Show password"} aria-label={visible?"Hide password":"Show password"} onClick={()=>setVisible(v=>!v)}>{visible?<EyeOff size={18}/>:<Eye size={18}/>}</button></div>
+      </label>
+      <button className="fv-primary-button fv-auth-submit" disabled={busy} type="submit">{busy?"Signing In…":"Sign In"} <ArrowRight size={17}/></button>
+    </form>
+    <div className="fv-auth-instructions"><CircleHelp size={16}/><p>First-time access uses the <strong>admin</strong> username and the bootstrap password configured for this deployment.</p></div>
+  </AuthExperience>;
+}
+
+function PasswordScreen({onDone,busy,setBusy}:{onDone:()=>Promise<void>;busy:boolean;setBusy:(value:boolean)=>void}) {
+  const [current,setCurrent]=useState("");
+  const [next,setNext]=useState("");
+  const [confirm,setConfirm]=useState("");
+  const [error,setError]=useState("");
+  async function submit(event:FormEvent) {
+    event.preventDefault();setError("");
+    if(next.length<12){setError("Use at least 12 characters for your new password.");return;}
+    if(next!==confirm){setError("The new passwords do not match.");return;}
+    setBusy(true);
+    try {await request("/api/auth/password",{method:"POST",body:JSON.stringify({current_password:current,new_password:next})});await onDone();}
+    catch(err){setError(err instanceof Error?err.message:"Password change failed.");}
+    finally{setBusy(false);}
+  }
+  return <AuthExperience eyebrow="ACCOUNT SECURITY" title="Secure Your Account" description="Replace your bootstrap password before accessing the Finovaunt dashboard.">
+    <div className="fv-auth-message info"><LockKeyhole size={18}/> Create a new password with at least 12 characters.</div>
+    {error&&<div className="fv-auth-message error" role="alert">{error}</div>}
+    <form onSubmit={submit} className="fv-auth-form">
+      <label>Current Password<input type="password" autoComplete="current-password" required value={current} onChange={event=>setCurrent(event.target.value)}/></label>
+      <label>New Password<input type="password" autoComplete="new-password" minLength={12} required value={next} onChange={event=>setNext(event.target.value)}/></label>
+      <label>Confirm New Password<input type="password" autoComplete="new-password" minLength={12} required value={confirm} onChange={event=>setConfirm(event.target.value)}/></label>
+      <button className="fv-primary-button fv-auth-submit" type="submit" disabled={busy}>{busy?"Updating Password…":"Update Password"} <ArrowRight size={17}/></button>
+    </form>
+  </AuthExperience>;
 }
 
 function ProfileView({ username, onPasswordChanged }: { username: string; onPasswordChanged: () => Promise<void> }) {
