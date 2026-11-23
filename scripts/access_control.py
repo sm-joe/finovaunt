@@ -107,7 +107,9 @@ def add_account(name: str, provider: str, account_id: str, role_arn: str, region
     if not name or provider != "aws" or not account_id or not role_arn.startswith("arn:") or not region:
         raise ValueError("Provide a name, AWS account ID, IAM role ARN, and region. AWS role-based onboarding is currently supported.")
     if not account_id.isdigit() or len(account_id) != 12: raise ValueError("AWS account ID must contain exactly 12 digits.")
-    if ":iam::" not in role_arn or ":role/" not in role_arn: raise ValueError("Role ARN must identify an AWS IAM role.")
+    expected_prefix = f"arn:aws:iam::{account_id}:role/"
+    if not role_arn.startswith(expected_prefix) or len(role_arn) <= len(expected_prefix):
+        raise ValueError("Role ARN must identify an IAM role in the onboarded AWS account.")
     with _LOCK:
         state=_read()
         if any(a.get("account_id")==account_id for a in state["cloud_accounts"]): raise ValueError("This AWS account is already onboarded.")
@@ -135,3 +137,22 @@ def billing_history(account_id: str) -> list[dict[str, Any]]:
     with _LOCK:
         state = _read()
         return [item for item in state.get("billing_scans", []) if item.get("account_id") == account_id]
+
+
+def delete_account(account_id: str) -> bool:
+    """Remove one cloud account and its billing history, without AWS mutations."""
+    with _LOCK:
+        state = _read()
+        before = len(state["cloud_accounts"])
+        state["cloud_accounts"] = [
+            item for item in state["cloud_accounts"]
+            if item.get("account_id") != account_id
+        ]
+        if len(state["cloud_accounts"]) == before:
+            return False
+        state["billing_scans"] = [
+            item for item in state.get("billing_scans", [])
+            if item.get("account_id") != account_id
+        ]
+        _write(state)
+        return True
