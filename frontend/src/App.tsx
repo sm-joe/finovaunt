@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Activity, AlertCircle, ArrowUpRight, BarChart3, Bell, Boxes, Cloud, CircleDollarSign, Database, HardDrive, Home, Layers3, LogOut, PackageSearch, RefreshCw, Search, Settings2, ShieldCheck, Target, UserRound, Wallet, Zap } from "lucide-react";
+import { Activity, AlertCircle, ArrowUpRight, BarChart3, Boxes, Cloud, Home, Layers3, LogOut, RefreshCw, Search, Settings2, ShieldCheck, UserRound, Zap } from "lucide-react";
 import FinovauntOverview from "./FinovauntOverview";
 import "./finovaunt-enterprise.css";
 import FinopsEvidence, { type FinOpsAssessment } from "./FinopsEvidence";
@@ -40,10 +40,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 function Empty({ children }: { children: React.ReactNode }) {
   return <div className="empty-state" style={{ padding: 28, textAlign: "center" }}>{children}</div>;
 }
-function Metric({ label, value, detail, Icon }: { label: string; value: string; detail: string; Icon: typeof Wallet }) {
-  return <article className="metric-card"><div className="metric-icon"><Icon size={19}/></div><span>{label}</span><strong style={{display: "block",fontSize: 27,margin: "9px 0"}}>{value}</strong><small>{detail}</small></article>;
-}
-
 export default function App({ onOpenCloud, onOpenProfile, onSignOut, username }: { onOpenCloud: () => void; onOpenProfile: () => void; onSignOut: () => void; username: string }) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [accountId, setAccountId] = useState("");
