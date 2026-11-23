@@ -186,9 +186,28 @@ function PasswordScreen({onDone,busy,setBusy}:{onDone:()=>Promise<void>;busy:boo
 function ProfileView({ username, onPasswordChanged }: { username: string; onPasswordChanged: () => Promise<void> }) {
   const [current, setCurrent] = useState(""); const [next, setNext] = useState(""); const [confirm, setConfirm] = useState(""); const [message, setMessage] = useState(""); const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
   async function submit(e: FormEvent) { e.preventDefault(); setError(""); setMessage(""); if (next.length < 12) { setError("New password must contain at least 12 characters."); return; } if (next !== confirm) { setError("The new passwords do not match."); return; } setBusy(true); try { await request("/api/auth/password", { method: "POST", body: JSON.stringify({ current_password: current, new_password: next }) }); setMessage("Password updated successfully."); setCurrent(""); setNext(""); setConfirm(""); await onPasswordChanged(); } catch (e) { setError(e instanceof Error ? e.message : "Password update failed."); } finally { setBusy(false); } }
-  return <section className="fin-settings-card"><span className="fin-auth-kicker">ACCOUNT SETTINGS</span><h1>Profile settings</h1><p>Manage your Finovaunt sign-in credentials.</p><div className="fin-profile-row"><span>Username</span><strong>{username}</strong></div><form onSubmit={submit} className="fin-settings-form"><h2>Change password</h2><label>Current password<input type="password" autoComplete="current-password" value={current} onChange={e=>setCurrent(e.target.value)} required/></label><label>New password<input type="password" autoComplete="new-password" minLength={12} value={next} onChange={e=>setNext(e.target.value)} required/></label><label>Confirm new password<input type="password" autoComplete="new-password" minLength={12} value={confirm} onChange={e=>setConfirm(e.target.value)} required/></label>{error && <div className="fin-form-error">{error}</div>}{message && <div className="fin-form-success">{message}</div>}<button className="fin-primary" disabled={busy}>{busy ? "Saving…" : "Update password"}</button></form></section>;
+  return <section className="fv-settings-grid">
+    <article className="fv-account-card fv-profile-overview">
+      <div className="fv-card-headline"><UserRound size={19}/><div><h2>Administrator Profile</h2><p>Signed-in account information</p></div></div>
+      <div className="fv-profile-identity"><span className="fv-avatar">{username.slice(0,2).toUpperCase()}</span><div><strong>{username}</strong><small>Finovaunt administrator</small></div><span className="fv-pill fv-pill-active">Active</span></div>
+      <div className="fv-setting-row"><span>Account</span><strong>{username}</strong></div>
+      <div className="fv-setting-row"><span>Platform</span><strong>AWS FinOps</strong></div>
+      <div className="fv-setting-row"><span>AWS Access</span><strong>Read-only collection</strong></div>
+      <p className="fv-help-text"><ShieldCheck size={16}/> Your sign-in session is managed by Finovaunt. AWS source credentials are configured separately for the API.</p>
+    </article>
+    <article className="fv-account-card">
+      <div className="fv-card-headline"><KeyRound size={19}/><div><h2>Account Security</h2><p>Change your administrator password</p></div></div>
+      <form onSubmit={submit} className="fv-managed-form">
+        <label>Current Password<input type="password" autoComplete="current-password" required value={current} onChange={e=>setCurrent(e.target.value)}/></label>
+        <label>New Password<input type="password" autoComplete="new-password" minLength={12} required value={next} onChange={e=>setNext(e.target.value)}/><small>Use at least 12 characters.</small></label>
+        <label>Confirm New Password<input type="password" autoComplete="new-password" minLength={12} required value={confirm} onChange={e=>setConfirm(e.target.value)}/></label>
+        {error&&<div className="fv-auth-message error" role="alert">{error}</div>}
+        {message&&<div className="fv-auth-message success" role="status"><CircleCheck size={16}/>{message}</div>}
+        <button type="submit" className="fv-primary-button" disabled={busy}>{busy?"Saving…":"Update Password"} <ArrowRight size={16}/></button>
+      </form>
+    </article>
+  </section>;
 }
-
 function CloudView() {
   const [accounts, setAccounts] = useState<CloudAccount[]>([]); const [selected, setSelected] = useState(""); const [history, setHistory] = useState<BillingScan[]>([]); const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [message, setMessage] = useState("");
   const [inventory, setInventory] = useState<InventoryScan | null>(null);
