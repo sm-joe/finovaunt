@@ -6,6 +6,8 @@ resource descriptions alone. An empty inventory is a valid observation.
 from __future__ import annotations
 from datetime import datetime, timezone
 
+from src.tools.aws_errors import aws_call, aws_pages
+
 
 class InventoryCollectionError(RuntimeError):
     pass
@@ -25,13 +27,13 @@ def collect_inventory(account: dict, *, external_id: str = "", max_assets: int =
     assume = {"RoleArn": role_arn, "RoleSessionName": "FinovauntInventoryReadOnly"}
     if external_id:
         assume["ExternalId"] = external_id
-    credentials = sts.assume_role(**assume)["Credentials"]
+    credentials = aws_call("assume_role", sts.assume_role, **assume)["Credentials"]
     session_kwargs = {
         "aws_access_key_id": credentials["AccessKeyId"],
         "aws_secret_access_key": credentials["SecretAccessKey"],
         "aws_session_token": credentials["SessionToken"],
     }
-    if str(boto3.client("sts", region_name=region, **session_kwargs).get_caller_identity().get("Account")) != account_id:
+    if str(aws_call("verify_identity", boto3.client("sts", region_name=region, **session_kwargs).get_caller_identity).get("Account")) != account_id:
         raise InventoryCollectionError("Assumed AWS account identity does not match onboarding.")
 
     ec2 = boto3.client("ec2", region_name=region, **session_kwargs)
@@ -54,7 +56,7 @@ def collect_inventory(account: dict, *, external_id: str = "", max_assets: int =
     # Prioritize volume evidence so a large fleet of EC2/RDS resources
     # cannot silently consume the cap before the EBS safety review.
     # Counts still reflect every observed resource (even if omitted).
-    for page in ec2.get_paginator("describe_volumes").paginate():
+    for page in aws_pages("inventory_ec2_volumes", ec2.get_paginator("describe_volumes").paginate()):
         for volume in page.get("Volumes", []):
             tags = {str(tag.get("Key")): str(tag.get("Value")) for tag in volume.get("Tags", [])}
             add({
@@ -80,7 +82,7 @@ def collect_inventory(account: dict, *, external_id: str = "", max_assets: int =
                 "recommendation": "review_only" if volume.get("State") == "available" else "not_assessed",
             })
 
-    for page in ec2.get_paginator("describe_instances").paginate():
+    for page in aws_pages("inventory_ec2_instances", ec2.get_paginator("describe_instances").paginate()):
         for reservation in page.get("Reservations", []):
             for instance in reservation.get("Instances", []):
                 tags = {str(tag.get("Key")): str(tag.get("Value")) for tag in instance.get("Tags", [])}
@@ -95,7 +97,7 @@ def collect_inventory(account: dict, *, external_id: str = "", max_assets: int =
                     "recommendation": "not_assessed",
                 })
 
-    for page in rds.get_paginator("describe_db_instances").paginate():
+    for page in aws_pages("inventory_rds", rds.get_paginator("describe_db_instances").paginate()):
         for db in page.get("DBInstances", []):
             add({
                 "id": str(db["DBInstanceIdentifier"]),

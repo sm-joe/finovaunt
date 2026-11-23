@@ -61,3 +61,30 @@ def test_unknown_codes_and_sensitive_messages_are_suppressed():
 
 def test_success_is_returned_unchanged():
     assert aws_call("cost_explorer", lambda **kwargs: {"ok": True}) == {"ok": True}
+
+
+def test_inventory_sts_assume_role_denial_is_classified():
+    from src.tools.aws_errors import aws_call
+    import pytest
+    def denied(**kwargs):
+        raise _client_error("AccessDenied", "private role and principal")
+    with pytest.raises(AWSAccessError) as error:
+        aws_call("assume_role", denied)
+    assert error.value.stage == "assume_role"
+    assert error.value.code == "AccessDenied"
+    assert "private role" not in str(error.value.public_payload())
+
+
+def test_inventory_paginator_denial_is_classified_during_iteration():
+    from src.tools.aws_errors import aws_pages
+    import pytest
+    def pages():
+        yield {"Volumes": []}
+        raise _client_error("UnauthorizedOperation", "sensitive AWS principal")
+    iterator = aws_pages("inventory_ec2_volumes", pages())
+    assert next(iterator) == {"Volumes": []}
+    with pytest.raises(AWSAccessError) as error:
+        next(iterator)
+    assert error.value.stage == "inventory_ec2_volumes"
+    assert error.value.code == "UnauthorizedOperation"
+    assert "sensitive AWS principal" not in str(error.value.public_payload())
