@@ -1,8 +1,8 @@
 name: Finovaunt Product CI
 
-# TEMPORARY DEVELOPMENT MODE (M1-M6):
-# Security audits, container builds and GHCR publication are disabled on
-# pushes and PRs. Restore the full release gates before stable v1.0.0.
+# Release-hardening gates: validate code, scan dependencies/secrets,
+# and build both distribution images on PRs and main pushes.
+# Container publication remains a separate release-only action.
 on:
   push:
     branches: [main]
@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: finovaunt-product-ci-${{ github.workflow }}-${{ github.ref }}
@@ -24,3 +25,30 @@ jobs:
       backend_changed: true
       frontend_changed: true
       pipeline_changed: true
+
+  security:
+    name: Dependency, Secret and Container Security
+    uses: ./.github/workflows/security.yml
+    with:
+      backend_changed: true
+      frontend_changed: true
+      pipeline_changed: true
+
+  container-build:
+    name: Build API and Dashboard Images
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out Repository
+        uses: actions/checkout@v7
+
+      - name: Build Python API Image
+        run: docker build --pull --tag finovaunt-api:ci --file Dockerfile .
+
+      - name: Build React Dashboard Image
+        run: docker build --pull --tag finovaunt-dashboard:ci --file frontend/Dockerfile frontend
+
+      - name: Inspect Built Images
+        run: |
+          docker image inspect finovaunt-api:ci --format '{{.Id}}'
+          docker image inspect finovaunt-dashboard:ci --format '{{.Id}}'
