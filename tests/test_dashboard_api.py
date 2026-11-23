@@ -190,3 +190,65 @@ def test_browser_cookie_session_survives_first_login_password_rotation(tmp_path,
         server.shutdown()
         server.server_close()
         thread.join(timeout=3)
+
+
+def test_live_dashboard_never_depends_on_scan_artifact_or_invents_spend(tmp_path, monkeypatch) -> None:
+    """A real onboarded account with no collected AWS evidence has null spend."""
+    from http.cookiejar import CookieJar
+    from urllib.request import build_opener, HTTPCookieProcessor
+    from scripts import access_control
+    monkeypatch.setenv("FINOVAUNT_BOOTSTRAP_PASSWORD", "initial-test-password-2026")
+    monkeypatch.setenv("FINOVAUNT_CONTROL_FILE", str(tmp_path / "control-plane.json"))
+    monkeypatch.delenv("FINOVAUNT_SECURE_COOKIES", raising=False)
+    monkeypatch.setenv("FINOPS_OUTPUT_DIR", "nonexistent-evidence-path")
+
+    account = access_control.add_account(
+        "Test AWS account", "aws", "123456789012",
+        "arn:aws:iam::123456789012:role/FinovauntReadOnly", "ap-south-1"
+    )
+    server = ThreadingHTTPServer(("127.0.0.1", 0), dashboard_api.DashboardHandler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    browser = build_opener(HTTPCookieProcessor(CookieJar()))
+    try:
+        with __import__("pytest").raises(HTTPError) as unauthorized:
+            browser.open(f"{base}/api/live-dashboard?account_id=123456789012", timeout=3)
+        assert unauthorized.value.code == 401
+
+        login = Request(
+            f"{base}/api/auth/login", method="POST",
+            data=json.dumps({"username":"admin","password":"initial-test-password-2026"}).encode(),
+            headers={"Content-Type":"application/json"},
+        )
+        with browser.open(login, timeout=3) as response:
+            assert json.loads(response.read())["authenticated"] is True
+
+        with browser.open(f"{base}/api/live-dashboard?account_id=123456789012", timeout=3) as response:
+            payload = json.loads(response.read())
+        assert payload["source"] == "aws_collected"
+        assert payload["account"]["id"] == account["id"]
+        assert payload["billing"] is None
+        assert payload["inventory"] is None
+        assert payload["estimated_savings"] is None
+        assert payload["realized_savings"] is None
+        assert payload["review_candidates"] == []
+        assert payload["billing_status"] == "not_collected"
+
+        # Saving genuine collectors' responses is the only path to dashboard values.
+        access_control.save_billing_scan("123456789012", {
+            "scanned_at": "2026-11-23T10:00:00+00:00", "status": "success",
+            "period_start": "2026-11-01", "period_end_exclusive": "2026-11-24",
+            "total_cost": 17.25, "total_cost_exact": "17.25", "currency": "USD",
+            "services": [{"service":"Amazon EC2", "amount":17.25, "currency":"USD"}],
+            "is_final": False,
+        })
+        with browser.open(f"{base}/api/live-dashboard?account_id=123456789012", timeout=3) as response:
+            payload = json.loads(response.read())
+        assert payload["billing"]["total_cost"] == 17.25
+        assert payload["inventory"] is None
+        assert payload["estimated_savings"] is None
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)
