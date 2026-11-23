@@ -1,51 +1,92 @@
-# Finovaunt local Docker deployment
+# Finovaunt — Docker Deployment and Operations
 
-This first Docker package runs the existing read-only dashboard API and builds the existing Vite/React frontend as static assets. It deliberately does not change `frontend/src/App.tsx` or `frontend/src/styles.css`.
+Finovaunt provides a self-hosted React dashboard and a Python API using two Docker Compose services. The API stores user/account metadata and scan history in a bind-mounted `data/` directory, and dashboard scan artifacts in `artifacts-live/`.
 
-## Prerequisites
+## Requirements
 
-- Docker Desktop with Docker Compose v2
-- Existing project checkout with `frontend/package-lock.json`
-- Scan artifacts in the repository's `artifacts-live/` directory for populated dashboard data
+- Linux with Docker Engine and Docker Compose v2
+- OpenSSL for generating a first-install password
+- TCP 4173 and 8787 available on local loopback
+- Sufficient write access to `data/` and `artifacts-live/` by the API container's UID 10001
 
-## Start (Windows PowerShell)
+## Quickstart (Bash only)
 
-Run at the repository root after copying these files into their listed paths:
+From the repository root:
 
-```powershell
-docker compose config
-docker compose build
-docker compose up -d
+```bash
+umask 077
+printf 'FINOVAUNT_BOOTSTRAP_PASSWORD=%s\n' "$(openssl rand -hex 24)" > .env
+mkdir -p data artifacts-live
+sudo chown -R 10001:10001 data artifacts-live
+
+docker compose config --quiet
+docker compose up -d --build
 docker compose ps
+curl --fail http://127.0.0.1:8787/api/health
 ```
 
-Open the dashboard at `http://localhost:4173`. The read-only API health endpoint is `http://localhost:8787/api/health`.
+Open `http://127.0.0.1:4173`. The username is `admin`; the initial password is the value in the private `.env` file. First login requires password rotation. After rotation, your persisted password hash remains in `data/control-plane.json`. Changing the bootstrap environment variable does not reset an existing password.
 
-## Stop / logs
+**Do not expose the default deployment directly on the internet.** Both published ports are bound to `127.0.0.1`. For remote installations, use a trusted authenticated reverse proxy with TLS, restrict networking, set `FINOVAUNT_SECURE_COOKIES=true`, and configure a secure external hostname/origin strategy before enabling user access.
 
-```powershell
-docker compose logs --tail 100
+## Build and lifecycle
+
+```bash
+docker compose config --quiet
+docker compose up -d --build
+docker compose logs --tail=100 api frontend
+docker compose restart api frontend
 docker compose down
 ```
 
-`docker compose down` preserves host scan artifacts. Do not use `docker compose down -v` as part of routine shutdown.
+`docker compose down` preserves bind-mounted `data/` and `artifacts-live/`. Avoid deleting these paths; they contain user state and scan evidence. The Docker API runs with a read-only root filesystem, no additional Linux capabilities, and a non-root UID. Its bound data directories must still be writable.
 
-## Artifact behavior
+## Using AWS
 
-`./artifacts-live-validation` is mounted read-only into the API container at `/app/artifacts-live-validation`, matching the validation scan output directory used during the recent project work. Live evidence is not copied into the image. If the directory is absent or does not contain `cost_evidence.json`, copy the actual scan output directory into this path or update both `FINOPS_OUTPUT_DIR` and the volume mapping to the directory that contains the real artifact. Do not create a fabricated `cost_evidence.json`. Health can pass while overview/assets endpoints report that scan evidence is unavailable; this is intentional and avoids inventing placeholder data.
+AWS billing and inventory scans need a source AWS credential chain in the API runtime that can call `sts:AssumeRole` on each onboarded role. The container does **not** automatically inherit your host `~/.aws` credentials.
 
-## Security boundaries
+Prefer deploying the API on a host/orchestrator that supplies a short-lived workload identity, rather than baking AWS keys into an image or embedding them in the UI. The onboarded target IAM role must permit the necessary read-only actions:
 
-- API and frontend ports are published on `127.0.0.1` only.
-- API container runs as a non-root user and mounts evidence read-only.
-- Containers drop Linux capabilities and enable `no-new-privileges`.
-- The API remains read-only and has no AWS credentials mounted into it.
-- Do not expose this dashboard publicly without authentication, TLS, access controls, and deployment-specific hardening.
+- `sts:GetCallerIdentity` in the assumed role
+- `ce:GetCostAndUsage` for Cost Explorer billing
+- `ec2:DescribeInstances` and `ec2:DescribeVolumes`
+- `rds:DescribeDBInstances`
+- The source identity must be trusted by the target role for `sts:AssumeRole`
 
-## v1 scope boundary
+The GitHub Actions OIDC scanner uses its own configured AWS role and region; it is not automatically connected to every dashboard-onboarded account. Do not conflate these two collection paths.
 
-The existing FinOps scan agent and scheduled GitHub Actions OIDC workflow remain on their existing `uv`/GitHub Actions execution path in this first Docker package. This keeps the dashboard container free of AWS credentials and avoids changing the established approval, report-only, and cloud-write boundaries. The scan agent is not claimed to be containerized by these files.
+## Scan artifacts
 
-## Validation status
+The dashboard displays the latest synced or locally provided artifact snapshot under `artifacts-live/`. Without a real snapshot, its data endpoints deliberately report unavailable evidence rather than inventing savings.
 
-The Docker files have not been built or run against the user's actual checkout in this environment. Validate the Compose configuration and build locally before relying on the container deployment. A successful image build does not certify AWS scan behavior or production readiness; see `RELEASE_READINESS.md`.
+For GitHub scan-artifact synchronization, provide a token with the minimum repository Actions read permission through `FINOVAUNT_GITHUB_TOKEN`, and configure `FINOVAUNT_GITHUB_REPOSITORY` and `FINOVAUNT_SCAN_WORKFLOW` as required. Keep this token out of source files and container images.
+
+A verified no-resource AWS scan produces `scan_status.json` with `empty_inventory` status and zero savings. It does not generate misleading optimization proposals.
+
+## Backup and restore
+
+Back up both local state and scan evidence, preserving file permissions and confidentiality:
+
+```bash
+docker compose stop
+umask 077
+tar -czf finovaunt-backup.tar.gz data artifacts-live
+docker compose start
+```
+
+Restore only after stopping the API and verifying the backup's integrity and source. Preserve ownership of the restored directories for UID 10001. A backup file may contain password hashes, account identifiers, billing history, review notes and cloud inventory; encrypt it at rest and restrict access.
+
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| Compose refuses startup | Set `FINOVAUNT_BOOTSTRAP_PASSWORD` in a private `.env` with at least 12 characters |
+| Login rejected | Verify persisted `data/control-plane.json`; bootstrap only applies to first setup |
+| Dashboard shows unavailable scan data | Inspect `artifacts-live/`, synchronization status, and `FINOPS_OUTPUT_DIR` |
+| AWS billing/inventory 502 | Check source credentials, trust policy, target account ID and read-only IAM permissions |
+| API unhealthy | Inspect `docker compose logs api` and mounted directory permissions |
+| Frontend cannot reach API | Inspect `docker compose logs frontend`, loopback port mapping and Nginx proxy |
+
+## Release boundary
+
+Local Compose configuration and CI validation do not imply that images were built, inspected and deployed in a production-like environment. The security and Docker image build workflows are temporarily disabled at the owner's request. They must be restored and pass before stable v1.0.0.
