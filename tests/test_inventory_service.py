@@ -76,7 +76,7 @@ def test_inventory_rejects_wrong_account_role():
 
 def test_inventory_respects_resource_cap(monkeypatch):
     def client(service, *, region_name, **kwargs):
-        return {"ec2": FakeEC2(), "rds": FakeRDS(), "sts": FakeSTS()}[service]
+        return {"ec2": FakeEC2(), "rds": FakeRDS(), "sts": FakeSTS(assumed=bool(kwargs))}[service]
     monkeypatch.setitem(sys.modules, "boto3", types.SimpleNamespace(client=client))
     result = collect_inventory(ACCOUNT, max_assets=1)
     assert result["asset_count"] == 1
