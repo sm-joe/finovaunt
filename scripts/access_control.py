@@ -1,11 +1,12 @@
 """Persistent local authentication and cloud-account registry for Finovaunt."""
 from __future__ import annotations
-import base64, hashlib, hmac, json, os, secrets, threading
+import base64, hashlib, hmac, json, os, secrets, threading, time
 from pathlib import Path
 from typing import Any
 
 _LOCK = threading.RLock()
-_SESSIONS: dict[str, str] = {}
+_SESSIONS: dict[str, tuple[str, float]] = {}
+_SESSION_TTL_SECONDS = 12 * 60 * 60
 _ITERATIONS = 310_000
 
 def _path() -> Path:
@@ -54,14 +55,18 @@ def login(username: str, password: str) -> dict[str, Any] | None:
         except Exception: return None
         actual = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, _ITERATIONS)
         if not hmac.compare_digest(actual, expected): return None
-        token = secrets.token_urlsafe(32); _SESSIONS[token] = username
+        token = secrets.token_urlsafe(32); _SESSIONS[token] = (username, time.monotonic() + _SESSION_TTL_SECONDS)
         return {"token": token, "username": username, "must_change_password": bool(user.get("must_change_password", False))}
 
 def session(token: str | None) -> dict[str, Any] | None:
     if not token: return None
     with _LOCK:
-        username = _SESSIONS.get(token)
-        if not username: return None
+        record = _SESSIONS.get(token)
+        if not record: return None
+        username, expires_at = record
+        if time.monotonic() >= expires_at:
+            _SESSIONS.pop(token, None)
+            return None
         state = _read(); user = state["user"]
         if username != user.get("username"): return None
         return {"username": username, "must_change_password": bool(user.get("must_change_password", False))}
@@ -72,8 +77,8 @@ def logout(token: str | None) -> None:
 
 def change_password(token: str | None, current: str, new: str) -> bool:
     with _LOCK:
-        who = _SESSIONS.get(token or "")
-        if not who or len(new) < 12 or new == "admin": return False
+        record = _SESSIONS.get(token or "")
+        if not record or time.monotonic() >= record[1] or len(new) < 12 or new == "admin": return False
         state = _read(); user = state["user"]
         try:
             salt = base64.b64decode(user["password"]["salt"]); expected = base64.b64decode(user["password"]["hash"])
@@ -82,15 +87,10 @@ def change_password(token: str | None, current: str, new: str) -> bool:
             )
         except Exception:
             current_matches = False
-        # Recovery for an initialized-but-not-yet-rotated admin account: older or
-        # stale persisted bootstrap hashes must not strand the first-login flow.
-        # This fallback is limited to an authenticated session and the required
-        # initial password; it is unavailable after the password has been changed.
-        if not current_matches and not (
-            bool(user.get("must_change_password")) and current == "admin"
-        ):
+        if not current_matches:
             return False
         user["password"] = _hash(new); user["must_change_password"] = False; _write(state)
+        _SESSIONS.clear()  # Revoke all sessions after a credential rotation.
         return True
 
 def list_accounts() -> list[dict[str, Any]]:
