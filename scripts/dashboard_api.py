@@ -167,7 +167,32 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self._json(405, {"error": "method_not_allowed", "message": "This API is read-only."})
 
     def do_DELETE(self) -> None:
-        self._json(405, {"error": "method_not_allowed", "message": "This API is read-only."})
+        route = urlparse(self.path).path.rstrip("/")
+        if not route.startswith("/api/cloud-accounts/"):
+            self._json(405, {"error": "method_not_allowed", "message": "Delete is not supported for this resource."})
+            return
+        origin = self.headers.get("Origin")
+        if origin and origin not in _ALLOWED_ORIGINS:
+            self._json(403, {"error": "invalid_origin", "message": "Untrusted request origin."})
+            return
+        if self.headers.get("Sec-Fetch-Site", "").lower() in {"cross-site", "same-site"} and not origin:
+            self._json(403, {"error": "invalid_origin", "message": "Cross-origin changes are blocked."})
+            return
+        current = access_control.session(self._cookie_token())
+        if not current:
+            self._json(401, {"error": "unauthorized", "message": "Please log in."})
+            return
+        if current.get("must_change_password"):
+            self._json(403, {"error": "password_change_required", "message": "Change your password first."})
+            return
+        account_id = route.removeprefix("/api/cloud-accounts/")
+        if not re.fullmatch(r"[0-9]{12}", account_id):
+            self._json(404, {"error": "not_found", "message": "Cloud account not found."})
+            return
+        if not access_control.delete_account(account_id):
+            self._json(404, {"error": "not_found", "message": "Cloud account not found."})
+            return
+        self._json(200, {"status": "deleted", "account_id": account_id})
 
     def do_GET(self) -> None:
         route = urlparse(self.path).path.rstrip("/") or "/"
