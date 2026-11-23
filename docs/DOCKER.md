@@ -102,6 +102,45 @@ This command displays the caller ARN but does not print AWS access keys. Never p
 
 A minimal target-role billing policy needs `ce:GetCostAndUsage` on `Resource: "*"`; add the documented regional EC2/RDS Describe permissions for inventory. The source identity separately needs `sts:AssumeRole` scoped to the exact target role ARN, and the target role must trust the source identity. Do not grant write privileges or attach AdministratorAccess just to make the collection work.
 
+## Recover source AWS authorization after a Docker restart
+
+Billing and inventory share the same STS AssumeRole source. If they both fail after `docker compose up --force-recreate`, first verify the **running container's** AWS principal. Changing a host `AWS_PROFILE` alone does not update credentials inside Docker. Temporary environment credentials are captured when the container is created, and expire; never paste or commit them.
+
+```bash
+docker compose exec -T api python - <<'PY'
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
+sts = boto3.client("sts")
+try:
+    identity = sts.get_caller_identity()
+    print("API source account:", identity["Account"])
+    print("API source principal:", identity["Arn"])
+    role = sts.assume_role(
+        RoleArn="arn:aws:iam::638631156706:role/Finovaunt-RO-Scan-Role",
+        RoleSessionName="FinovauntDiagnostic",
+    )
+    print("AssumeRole: OK; assumed principal:", role["AssumedRoleUser"]["Arn"])
+except ClientError as error:
+    print("AWS error code:", error.response.get("Error", {}).get("Code", "Unknown"))
+    print("AWS step failed; verify the source principal, role trust and External ID.")
+except BotoCoreError as error:
+    print("AWS SDK error type:", type(error).__name__)
+PY
+```
+
+The target ARN is an example for account `638631156706`: use your onboarded role ARN if different. If the trust policy needs `sts:ExternalId`, add `ExternalId="your-id"` to the diagnostic request (do not print it). If the source principal is not `arn:aws:iam::638631156706:user/demo-user`, verify the credential chain before changing IAM roles.
+
+For a short-lived local development session with AWS CLI v2, **export source** credentials for the authorized user rather than already-assumed target-role credentials:
+
+```bash
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+aws sts get-caller-identity --profile demo-user
+eval "$(aws configure export-credentials --profile demo-user --format env)"
+docker compose up -d --force-recreate api frontend
+```
+
+This is a local-only workaround: environment credentials expire and must be refreshed with a subsequent recreate. Production deployments should use a renewing workload identity. For production, do not rely on environment credentials captured from an interactive IAM user session.
+
 ## EBS Pricing, Kubernetes PV Correlation, and Review
 
 Fresh regional inventory collects actual EBS `Size` (GiB), `VolumeType`, provisioned `Iops`, `Throughput`, creation time, tags, attachment state and identifiers. It optionally enriches **unattached volumes** with the AWS Price List `pricing:GetProducts` storage-only rate for supported `gp2`/`gp3` types. It uses `AmazonEC2`, account's AWS region, `EBS:VolumeUsage` and the verified USD `GB-Mo` OnDemand price dimension. If price data is absent or ambiguous, monthly costs are **not estimable** rather than fabricated. Storage cost is an indicative **scenario** for a full hypothetical month, not Cost Explorer resource attribution and not verified reduction.
