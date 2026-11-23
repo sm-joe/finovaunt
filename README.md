@@ -98,6 +98,14 @@ Local `demo-user` credentials are a development option rather than a production 
 
 An offline backup/restore utility, `scripts/control_backup.py`, validates SHA-256 checksums before recovery. Stop the API before copying or restoring its local state; see [Docker backup and restore operations](docs/DOCKER.md). The CI suite verifies both clean installs and persisted account/password state across container recreation.
 
+## AWS FinOps scope
+
+Finovaunt focuses on frequently used AWS services: Cost Explorer, AWS Budgets, EC2/EBS, RDS, S3, CloudWatch and Amazon EKS. The **AWS FinOps** dashboard runs separate read-only collectors for cost allocation tags, conservative EC2/RDS utilization reviews, S3 bucket inventory/storage telemetry, EKS discovery and existing AWS budgets. Missing evidence remains **not assessed**, never fabricated spend, rightsizing or verified savings.
+
+Optional EC2 non-production power changes live in an **isolated, disabled-by-default executor** with a dedicated IAM role and explicit instance/tag allowlists. Finovaunt's dashboard collector stays read-only. This does not enable automatic night/weekend shutdowns on installation.
+
+See [AWS-only product scope, current implementation and remaining milestones](docs/AWS_FINOPS_SCOPE.md) for the precise M1–M6 status, limitations and least-privilege permissions.
+
 ## Run the Python optimization workflow
 
 ```bash
