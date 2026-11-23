@@ -239,20 +239,25 @@ def collect_eks(account: dict, credentials: dict) -> dict:
             return {"status": "partial", "reason": "cluster_cap_exceeded",
                     "observed_clusters_at_least": len(names), "clusters": []}
     clusters = []
+    import boto3
+    session = boto3.Session(**credentials)
+    from src.tools.eks_usage import collect_namespace_usage
     for name in names:
         try:
             c = aws_call("eks_cluster_details", eks.describe_cluster, name=name)["cluster"]
+            usage = collect_namespace_usage(c, name=name, region=region, session=session)
             clusters.append({"name": name, "arn": c.get("arn"),
                 "version": c.get("version"), "status": c.get("status"),
                 "region": region, "namespace_costs": None,
-                "allocation_status": "requires_workload_usage_and_cost_data"})
+                "namespace_usage": usage,
+                "allocation_status": "requires_verified_cluster_cost_and_shared_cost_model"})
         except Exception:
             clusters.append({"name": name, "region": region,
                 "status": "details_unavailable", "namespace_costs": None,
                 "allocation_status": "not_assessed"})
     return {"status": "success", "source": "aws_eks", "clusters": clusters,
-            "notes": ["EKS cluster discovery does not provide per-namespace cost attribution.",
-                      "Namespace/workload costs require cluster usage metrics and an explicit shared-cost allocation model."]}
+            "notes": ["Kubernetes Metrics API samples observed namespace CPU/memory only when RBAC and Metrics Server permit it.",
+                      "Observed usage is not billed namespace cost; allocation requires verified cluster infrastructure spend and a shared-cost model."]}
 
 
 def collect_budgets(account: dict, credentials: dict) -> dict:

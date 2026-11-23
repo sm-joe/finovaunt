@@ -100,7 +100,7 @@ An offline backup/restore utility, `scripts/control_backup.py`, validates SHA-25
 
 ## AWS FinOps scope
 
-Finovaunt focuses on frequently used AWS services: Cost Explorer, AWS Budgets, EC2/EBS, RDS, S3, CloudWatch and Amazon EKS. The **AWS FinOps** dashboard runs separate read-only collectors for cost allocation tags, conservative EC2/RDS utilization reviews, S3 bucket inventory/storage telemetry, EKS discovery and existing AWS budgets. Missing evidence remains **not assessed**, never fabricated spend, rightsizing or verified savings.
+Finovaunt focuses on frequently used AWS services: Cost Explorer, AWS Budgets, EC2/EBS, RDS, S3, CloudWatch and Amazon EKS. The **AWS FinOps** dashboard runs separate read-only collectors for cost allocation tags, conservative EC2/RDS utilization reviews, S3 bucket inventory/storage telemetry, EKS discovery with optional Kubernetes namespace CPU/memory samples, and existing AWS budgets. Missing evidence remains **not assessed**, never fabricated spend, rightsizing or verified savings.
 
 Optional EC2 non-production power changes live in an **isolated, disabled-by-default executor** with a dedicated IAM role and explicit instance/tag allowlists. Finovaunt's dashboard collector stays read-only. This does not enable automatic night/weekend shutdowns on installation.
 

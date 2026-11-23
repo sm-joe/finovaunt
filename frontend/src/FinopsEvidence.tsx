@@ -20,6 +20,10 @@ type S3Evidence = {buckets?: Array<{
 type EksEvidence = {clusters?: Array<{
   name: string; version?: string; status?: string; region?: string;
   namespace_costs?: null; allocation_status: string;
+  namespace_usage?: {status: string; reason?: string; namespaces?: Array<{
+    namespace: string; pods_sampled: number;
+    cpu_millicores_sampled: string; memory_mib_sampled: string; cost_usd: null;
+  }>};
 }>; status?: string};
 type BudgetEvidence = {budgets?: Array<{
   name: string; type?: string; unit?: string; limit_exact?: string;
@@ -103,13 +107,27 @@ export default function FinopsEvidence({report}: {report: FinOpsAssessment | nul
         <EvidenceNotice message={storage?.status === "partial" ? "Bucket inventory is partial; no complete assessment is available." : "No accessible buckets returned."}/>}
     </Section>
     <Section title={humanName.eks} name="eks" section={sections.eks}>
-      <EvidenceNotice message="Cluster discovery does not provide workload or namespace cost allocation. Node and pod telemetry are required before reporting those costs."/>
+      <EvidenceNotice message="EKS can sample namespace CPU and memory from Kubernetes Metrics API when RBAC and Metrics Server are available. These usage observations are not attributable dollar costs."/>
       {eks?.clusters?.length ? <div className="table-scroll"><table>
         <thead><tr><th>Cluster</th><th>Region</th><th>Kubernetes Version</th><th>Status</th><th>Namespace Cost</th></tr></thead>
-        <tbody>{eks.clusters.map((cluster) => <tr key={cluster.name}>
-          <td>{cluster.name}</td><td>{cluster.region || "Unknown"}</td><td>{cluster.version || "Unknown"}</td>
-          <td>{cluster.status || "Unknown"}</td><td>Not attributed</td>
-        </tr>)}</tbody></table></div> : <EvidenceNotice message="No EKS clusters were returned for the selected region."/>}
+        <tbody>{eks.clusters.map((cluster) => <React.Fragment key={cluster.name}>
+          <tr>
+            <td>{cluster.name}</td><td>{cluster.region || "Unknown"}</td><td>{cluster.version || "Unknown"}</td>
+            <td>{cluster.status || "Unknown"}</td><td>Not attributed</td>
+          </tr>
+          <tr><td colSpan={5}>
+            <details>
+              <summary>Namespace CPU / memory sample · {cluster.namespace_usage?.status || "Not assessed"}</summary>
+              {cluster.namespace_usage?.status === "collected" && cluster.namespace_usage.namespaces?.length ?
+                <div className="table-scroll"><table><thead><tr><th>Namespace</th><th>Sampled Pods</th><th>CPU (mCPU)</th><th>Memory (MiB)</th><th>Allocated Cost</th></tr></thead>
+                  <tbody>{cluster.namespace_usage.namespaces.map(ns => <tr key={ns.namespace}>
+                    <td>{ns.namespace}</td><td>{ns.pods_sampled}</td><td>{ns.cpu_millicores_sampled}</td>
+                    <td>{ns.memory_mib_sampled}</td><td>Not attributed</td>
+                  </tr>)}</tbody></table></div> :
+                <p>{cluster.namespace_usage?.reason || "No namespace metrics available. Enable Kubernetes Metrics Server and allow read access."}</p>}
+            </details>
+          </td></tr>
+        </React.Fragment>)}</tbody></table></div> : <EvidenceNotice message="No EKS clusters were returned for the selected region."/>}
     </Section>
     <Section title={humanName.budgets} name="budgets" section={sections.budgets}>
       <EvidenceNotice message="Existing AWS Budgets are displayed read-only. Finovaunt does not create budgets or send alerts."/>

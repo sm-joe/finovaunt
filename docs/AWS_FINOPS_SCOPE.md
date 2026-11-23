@@ -17,7 +17,7 @@ Finovaunt is **AWS-only**. Supported service families are Cost Explorer, AWS Bud
 | M1 — Cost ingestion and allocation | Month-to-date Cost Explorer grouped by Team, Project and Environment tags, exact decimal amounts, unknown/unallocated visibility, persistent account-scoped evidence | CUR 2.0 / AWS Data Exports source, account/region history, hourly/daily ingestion, complete resource attribution and reconciled charges |
 | M2 — Resource optimization | Read-only EC2 and RDS CPU telemetry review; existing EBS lifecycle/pricing/PV review | Memory, network, IO and utilization seasonality; attributable instance pricing; verified recommendations with savings and confidence |
 | M3 — S3 cost intelligence | S3 bucket/region/tag discovery and CloudWatch StandardStorage size telemetry | Verified bucket-level costs from CUR, all storage classes, requests/transfer, Storage Lens and lifecycle class recommendations |
-| M4 — EKS FinOps | EKS cluster inventory/status and explicit absence of namespace cost attribution; existing EBS PV verification | Verified node/pod metrics, namespace/workload allocation, shared cost model and accuracy acceptance |
+| M4 — EKS FinOps | EKS cluster inventory/status, read-only Kubernetes Metrics API namespace CPU/memory samples (RBAC permitting), and explicit absence of namespace cost attribution; existing EBS PV verification | Verified node costs and pod/request telemetry coverage, namespace/workload dollar allocation, shared cost model and accuracy acceptance |
 | M5 — Budgets and automation | Existing AWS Budgets read; disabled-by-default schedule evaluator; separate gated EC2 executor | Policy management UI, durable scheduling, approval/reconciliation, anomaly alerts and complete audit/recovery |
 | M6 — Production platform | Existing Docker smoke and persisted restart acceptance, backup checks, security CI | Transactional database and migrations, multi-user RBAC, frontend E2E, rate limits, full upgrade/rollback tests, signed releases |
 
@@ -28,6 +28,12 @@ These are milestones, not claims that all work within each milestone is finished
 After onboarding your AWS account, select it in the dashboard, open **AWS FinOps**, and choose **Collect AWS FinOps Evidence**. This uses the existing API source credentials and target read-only role. Every section records whether its own evidence is available. The result is saved locally, and changing the IAM role or region invalidates the *current* view without deleting past evidence.
 
 The S3 StandardStorage CloudWatch metric is a daily capacity observation, **not a billed cost**. EKS list/describe responses do not prove namespace spending. Low EC2/RDS CPU is **not** an executable rightsizing recommendation. No savings are considered realized until validated against post-change billing and resource lifecycle evidence.
+
+## EKS namespace usage (read-only, not a dollar cost)
+
+If the EKS Kubernetes API is reachable from the Finovaunt container, a signed short-lived EKS token and the cluster's AWS-provided CA are used for `GET /apis/metrics.k8s.io/v1beta1/pods`. Kubernetes Metrics Server must be installed and the AWS role principal must be granted read access to the `pods` resource in `metrics.k8s.io` for the desired namespaces; cluster-wide access is required to collect across all namespaces. EKS IAM `eks:DescribeCluster` alone does not supply Kubernetes RBAC.
+
+Finovaunt aggregates **sampled** namespace CPU (millicores), memory (MiB) and observed pod counts. This is point-in-time usage, not requests/limits, full workload coverage, node accounting, or attributable spend. Private EKS endpoints must be reachable from the API container; auth/RBAC/metrics unavailability returns `not_assessed`, not zero usage. The query is GET-only, certificate verified, and restricts signed credentials to an EKS endpoint hostname. No Kubernetes resource is edited.
 
 ## Optional non-production power executor
 
