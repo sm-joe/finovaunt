@@ -94,3 +94,63 @@ def test_recommendation_decisions_are_auditable_and_never_apply_infrastructure(t
     assert record["reviewed_by"] == "admin"
     assert access_control.recommendation_decisions("scan1")[0]["id"] == record["id"]
     assert access_control.recommendation_decisions("other-run") == []
+
+
+def test_collector_configuration_update_preserves_history_and_requires_fresh_evidence(tmp_path, monkeypatch):
+    from scripts import access_control
+    from src.utils.live_dashboard import account_dashboard
+    monkeypatch.setenv("FINOVAUNT_BOOTSTRAP_PASSWORD", "initial-test-password-2026")
+    monkeypatch.setenv("FINOVAUNT_CONTROL_FILE", str(tmp_path / "control-plane.json"))
+    account = access_control.add_account(
+        "Original", "aws", "123456789012",
+        "arn:aws:iam::123456789012:role/OriginalRole", "us-east-1",
+    )
+    access_control.save_billing_scan(account["account_id"], {
+        "scanned_at": "2026-11-23", "total_cost": 12.2, "status": "success",
+    })
+    scan = access_control.save_inventory_scan(account["account_id"], {
+        "scanned_at": "2026-11-23", "region": "us-east-1",
+        "status": "success", "truncated": False,
+        "assets": [{"id": "vol-abc", "type": "ebs", "name": "legacy", "state": "available"}],
+    })
+    assert account_dashboard(account["account_id"])["billing"]["total_cost"] == 12.2
+    assert len(account_dashboard(account["account_id"])["review_candidates"]) == 1
+    updated = access_control.update_account_configuration(
+        account_id=account["account_id"], name="Updated",
+        role_arn="arn:aws:iam::123456789012:role/NewReadRole",
+        region="eu-west-1", note="Switching collector scope after AWS account review.",
+        reviewed_by="admin",
+    )
+    assert updated["config_revision"] == 2
+    dashboard = account_dashboard(account["account_id"])
+    assert dashboard["billing"] is None and dashboard["inventory"] is None
+    assert dashboard["review_candidates"] == []
+    assert dashboard["billing_status"] == "not_collected"
+    assert access_control.billing_history(account["account_id"])[0]["total_cost"] == 12.2
+    assert access_control.optimization_history(account["account_id"])[0]["resource_id"] == "vol-abc"
+    assert len(dashboard["account_config_audit"]) == 1
+    assert dashboard["account_config_audit"][0]["aws_resources_modified"] is False
+    fresh = access_control.save_inventory_scan(account["account_id"], {
+        "scanned_at": "2026-11-24", "region": "eu-west-1",
+        "status": "empty_inventory", "truncated": False, "assets": [],
+    })
+    assert fresh["config_revision"] == 2
+    assert account_dashboard(account["account_id"])["inventory"]["id"] == fresh["id"]
+    assert scan["id"] != fresh["id"]
+
+
+def test_collector_configuration_rejects_cross_account_roles(tmp_path, monkeypatch):
+    from scripts import access_control
+    monkeypatch.setenv("FINOVAUNT_BOOTSTRAP_PASSWORD", "initial-test-password-2026")
+    monkeypatch.setenv("FINOVAUNT_CONTROL_FILE", str(tmp_path / "control-plane.json"))
+    access_control.add_account(
+        "Original", "aws", "123456789012",
+        "arn:aws:iam::123456789012:role/OriginalRole", "us-east-1",
+    )
+    with pytest.raises(ValueError, match="onboarded AWS account"):
+        access_control.update_account_configuration(
+            account_id="123456789012", name="Invalid",
+            role_arn="arn:aws:iam::999999999999:role/Other",
+            region="us-east-1", note="Reviewing unauthorized cross-account role.",
+            reviewed_by="admin",
+        )
