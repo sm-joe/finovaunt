@@ -6,7 +6,7 @@ resource descriptions alone. An empty inventory is a valid observation.
 from __future__ import annotations
 from datetime import datetime, timezone
 
-from src.tools.aws_errors import aws_call
+from src.tools.aws_errors import aws_call, aws_pages
 
 
 class InventoryCollectionError(RuntimeError):
@@ -56,7 +56,7 @@ def collect_inventory(account: dict, *, external_id: str = "", max_assets: int =
     # Prioritize volume evidence so a large fleet of EC2/RDS resources
     # cannot silently consume the cap before the EBS safety review.
     # Counts still reflect every observed resource (even if omitted).
-    for page in aws_call("inventory_ec2_volumes", ec2.get_paginator("describe_volumes").paginate):
+    for page in aws_pages("inventory_ec2_volumes", ec2.get_paginator("describe_volumes").paginate()):
         for volume in page.get("Volumes", []):
             tags = {str(tag.get("Key")): str(tag.get("Value")) for tag in volume.get("Tags", [])}
             add({
@@ -82,7 +82,7 @@ def collect_inventory(account: dict, *, external_id: str = "", max_assets: int =
                 "recommendation": "review_only" if volume.get("State") == "available" else "not_assessed",
             })
 
-    for page in aws_call("inventory_ec2_instances", ec2.get_paginator("describe_instances").paginate):
+    for page in aws_pages("inventory_ec2_instances", ec2.get_paginator("describe_instances").paginate()):
         for reservation in page.get("Reservations", []):
             for instance in reservation.get("Instances", []):
                 tags = {str(tag.get("Key")): str(tag.get("Value")) for tag in instance.get("Tags", [])}
@@ -97,7 +97,7 @@ def collect_inventory(account: dict, *, external_id: str = "", max_assets: int =
                     "recommendation": "not_assessed",
                 })
 
-    for page in aws_call("inventory_rds", rds.get_paginator("describe_db_instances").paginate):
+    for page in aws_pages("inventory_rds", rds.get_paginator("describe_db_instances").paginate()):
         for db in page.get("DBInstances", []):
             add({
                 "id": str(db["DBInstanceIdentifier"]),
