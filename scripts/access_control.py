@@ -136,7 +136,7 @@ def update_account_configuration(*, account_id: str, name: str, role_arn: str, r
         raise ValueError("Account display name must be between 1 and 120 characters.")
     if not re.fullmatch(r"arn:aws:iam::" + re.escape(account_id) + r":role/[A-Za-z0-9+=,.@_/-]+", role_arn):
         raise ValueError("Role ARN must identify a role in the onboarded AWS account.")
-    if not re.fullmatch(r"[a-z]{2}(?:-gov)?-[a-z]+-\\d", region):
+    if not re.fullmatch(r"[a-z]{2}(?:-gov)?-[a-z]+-[0-9]", region):
         raise ValueError("Provide a valid AWS region code.")
     if not 10 <= len(note) <= 2000:
         raise ValueError("Record a reason of 10 to 2000 characters for the configuration change.")
