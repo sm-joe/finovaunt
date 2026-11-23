@@ -120,3 +120,73 @@ def test_recommendation_decisions_are_not_public(tmp_path, monkeypatch) -> None:
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_browser_cookie_session_survives_first_login_password_rotation(tmp_path, monkeypatch) -> None:
+    """A successful login must retain its cookie and rotation must replace it."""
+    from http.cookiejar import CookieJar
+    from urllib.request import build_opener, HTTPCookieProcessor
+
+    monkeypatch.setenv("FINOVAUNT_BOOTSTRAP_PASSWORD", "initial-test-password-2026")
+    monkeypatch.setenv("FINOVAUNT_CONTROL_FILE", str(tmp_path / "control-plane.json"))
+    monkeypatch.delenv("FINOVAUNT_SECURE_COOKIES", raising=False)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), dashboard_api.DashboardHandler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    jar = CookieJar()
+    browser = build_opener(HTTPCookieProcessor(jar))
+
+    def get_session():
+        with browser.open(f"{base}/api/auth/session", timeout=3) as response:
+            return json.loads(response.read())
+
+    def post(path, payload):
+        request = Request(
+            f"{base}{path}",
+            method="POST",
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        with browser.open(request, timeout=3) as response:
+            return json.loads(response.read()), response.headers.get("Set-Cookie", "")
+
+    try:
+        assert get_session()["authenticated"] is False
+        login, first_cookie = post("/api/auth/login", {
+            "username": "admin", "password": "initial-test-password-2026",
+        })
+        assert login["authenticated"] is True
+        assert login["must_change_password"] is True
+        assert "finovaunt_session=" in first_cookie
+        assert "HttpOnly" in first_cookie
+        assert len(list(jar)) == 1, f"Browser rejected cookie: {first_cookie!r}"
+        assert list(jar)[0].value in dashboard_api.access_control._SESSIONS
+        probe = Request(f"{base}/api/auth/session")
+        jar.add_cookie_header(probe)
+        assert "finovaunt_session=" in (probe.get_header("Cookie") or ""), f"Cookie path mismatch: {list(jar)[0].path!r}"
+        assert dashboard_api.access_control.session(list(jar)[0].value) is not None
+        assert get_session()["authenticated"] is True
+
+        changed, rotated_cookie = post("/api/auth/password", {
+            "current_password": "initial-test-password-2026",
+            "new_password": "replacement-test-password-2026",
+        })
+        assert changed["status"] == "password_changed"
+        assert changed["authenticated"] is True
+        assert "finovaunt_session=" in rotated_cookie
+        assert first_cookie != rotated_cookie
+        active = get_session()
+        assert active["authenticated"] is True
+        assert active["must_change_password"] is False
+        assert active["username"] == "admin"
+
+        # The old token is invalid after rotation even though the fresh one works.
+        old_token = first_cookie.split("finovaunt_session=", 1)[1].split(";", 1)[0]
+        request = Request(f"{base}/api/auth/session", headers={"Cookie": f"finovaunt_session={old_token}"})
+        with urlopen(request, timeout=3) as response:
+            assert json.loads(response.read())["authenticated"] is False
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)

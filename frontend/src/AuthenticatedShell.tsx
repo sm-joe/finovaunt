@@ -34,10 +34,32 @@ export default function AuthenticatedShell() {
   useEffect(() => { void loadSession(); }, [loadSession]);
 
   async function login(username: string, password: string) {
-    setBusy(true); setError("");
-    try { await request("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }); await loadSession(); }
-    catch (e) { setError(e instanceof Error ? e.message : "Login failed."); }
-    finally { setBusy(false); }
+    setBusy(true);
+    setError("");
+    try {
+      const response = await request<Session>("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ username, password }),
+      });
+      if (!response.authenticated) {
+        throw new Error("The server did not confirm authentication.");
+      }
+      // A successful POST is insufficient if the browser drops Set-Cookie.
+      // Verify the actual cookie-backed session before entering the app.
+      const confirmed = await request<Session>("/api/auth/session");
+      if (!confirmed.authenticated) {
+        throw new Error(
+          "Your password was accepted, but the session cookie was not retained. " +
+          "Use the same dashboard address for login and browsing, allow site cookies, " +
+          "and use HTTPS if FINOVAUNT_SECURE_COOKIES is enabled."
+        );
+      }
+      setSession(confirmed);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Login failed.");
+    } finally {
+      setBusy(false);
+    }
   }
   async function logout() {
     setBusy(true); setError("");
@@ -74,7 +96,7 @@ function LoginScreen({ onLogin, busy, error }: { onLogin: (u: string, p: string)
 function PasswordScreen({ onDone, busy, setBusy }: { onDone: () => Promise<void>; busy: boolean; setBusy: (v: boolean) => void }) {
   const [current, setCurrent] = useState(""); const [next, setNext] = useState(""); const [confirm, setConfirm] = useState(""); const [error, setError] = useState("");
   async function submit(e: FormEvent) { e.preventDefault(); setError(""); if (next.length < 12) { setError("Use at least 12 characters for your new password."); return; } if (next !== confirm) { setError("The new passwords do not match."); return; } setBusy(true); try { await request("/api/auth/password", { method: "POST", body: JSON.stringify({ current_password: current, new_password: next }) }); await onDone(); } catch (err) { setError(err instanceof Error ? err.message : "Password change failed."); } finally { setBusy(false); } }
-  return <div className="fin-auth-page"><section className="fin-auth-card"><div className="fin-auth-mark"><ShieldCheck size={23}/></div><span className="fin-auth-kicker">ACCOUNT SECURITY</span><h1>Change your password</h1><p>Before continuing, replace the default password with a secure password of at least 12 characters.</p><form onSubmit={submit}><label>Current password<input type="password" autoComplete="current-password" value={current} onChange={e=>setCurrent(e.target.value)} required/></label><label>New password<input type="password" autoComplete="new-password" minLength={12} value={next} onChange={e=>setNext(e.target.value)} required/></label><label>Confirm new password<input type="password" autoComplete="new-password" minLength={12} value={confirm} onChange={e=>setConfirm(e.target.value)} required/></label>{error && <div className="fin-form-error" role="alert">{error}</div>}<button className="fin-primary" disabled={busy}>{busy ? "Saving…" : "Change password"}</button></form></section></div>;
+  return <div className="fin-auth-page"><section className="fin-auth-card"><div className="fin-auth-mark"><ShieldCheck size={23}/></div><span className="fin-auth-kicker">ACCOUNT SECURITY</span><h1>Change your password</h1><p>Before continuing, replace your initial password with a secure password of at least 12 characters. You will remain signed in after the change.</p><form onSubmit={submit}><label>Current password<input type="password" autoComplete="current-password" value={current} onChange={e=>setCurrent(e.target.value)} required/></label><label>New password<input type="password" autoComplete="new-password" minLength={12} value={next} onChange={e=>setNext(e.target.value)} required/></label><label>Confirm new password<input type="password" autoComplete="new-password" minLength={12} value={confirm} onChange={e=>setConfirm(e.target.value)} required/></label>{error && <div className="fin-form-error" role="alert">{error}</div>}<button className="fin-primary" disabled={busy}>{busy ? "Saving…" : "Change password"}</button></form></section></div>;
 }
 
 function ProfileView({ username, onPasswordChanged }: { username: string; onPasswordChanged: () => Promise<void> }) {
