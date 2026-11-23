@@ -85,6 +85,26 @@ jobs:
           curl --fail --silent --show-error http://127.0.0.1:4173/ >/tmp/finovaunt-frontend.html
           grep -qi '<html' /tmp/finovaunt-frontend.html
 
+      - name: Persist Administrator and Collector Configuration
+        run: python scripts/acceptance_state_upgrade.py prepare
+
+      - name: Restart Containers Without Clearing Persistent Data
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose up -d --force-recreate api frontend
+
+      - name: Verify Persisted State After Container Restart
+        run: python scripts/acceptance_state_upgrade.py verify
+
+      - name: Verify Backup Integrity Of Persisted State
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose stop api frontend
+          python scripts/control_backup.py backup "$RUNNER_TEMP/finovaunt-state.tar.gz"
+          python scripts/control_backup.py verify "$RUNNER_TEMP/finovaunt-state.tar.gz"
+
       - name: Inspect Container Status on Failure
         if: failure()
         run: docker compose logs --tail=120 api frontend init-data
