@@ -31,7 +31,7 @@ def _read() -> dict[str, Any]:
                 "Set FINOVAUNT_BOOTSTRAP_PASSWORD (at least 12 characters) "
                 "before starting a new Finovaunt installation."
             )
-        state = {"user": {"username": "admin", "password": _hash(bootstrap_password), "must_change_password": True}, "cloud_accounts": [], "billing_scans": [], "inventory_scans": [], "recommendation_decisions": [], "ebs_reviews": [], "optimization_ledger": []}
+        state = {"user": {"username": "admin", "password": _hash(bootstrap_password), "must_change_password": True}, "cloud_accounts": [], "billing_scans": [], "inventory_scans": [], "recommendation_decisions": [], "ebs_reviews": [], "optimization_ledger": [], "account_config_audit": []}
         _write(state)
         return state
     try:
@@ -43,6 +43,7 @@ def _read() -> dict[str, Any]:
         data.setdefault("recommendation_decisions", [])
         data.setdefault("ebs_reviews", [])
         data.setdefault("optimization_ledger", [])
+        data.setdefault("account_config_audit", [])
         return data
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         raise RuntimeError("Finovaunt control-plane state is unreadable; refusing to reset credentials or account records.") from exc
@@ -117,9 +118,55 @@ def add_account(name: str, provider: str, account_id: str, role_arn: str, region
     with _LOCK:
         state=_read()
         if any(a.get("account_id")==account_id for a in state["cloud_accounts"]): raise ValueError("This AWS account is already onboarded.")
-        item={"id":secrets.token_hex(8),"name":name,"provider":"aws","account_id":account_id,"role_arn":role_arn,"region":region,"status":"onboarded","created_at":__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()}
+        item={"id":secrets.token_hex(8),"name":name,"provider":"aws","account_id":account_id,"role_arn":role_arn,"region":region,"status":"onboarded","created_at":__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(), "config_revision": 1}
         state["cloud_accounts"].append(item); _write(state)
         return {k:v for k,v in item.items() if k != "external_id"}
+
+def update_account_configuration(*, account_id: str, name: str, role_arn: str, region: str,
+                                 reviewed_by: str, note: str) -> dict[str, Any]:
+    """Change collector configuration without deleting any historical evidence.
+
+    Increment the revision on role or region changes so snapshots under old
+    authorization/scope cannot be presented as a current-account collection.
+    """
+    import re
+    from datetime import datetime, timezone
+    name, role_arn, region, note = (value.strip() for value in (name, role_arn, region, note))
+    if not name or len(name) > 120:
+        raise ValueError("Account display name must be between 1 and 120 characters.")
+    if not re.fullmatch(r"arn:aws:iam::" + re.escape(account_id) + r":role/[A-Za-z0-9+=,.@_/-]+", role_arn):
+        raise ValueError("Role ARN must identify a role in the onboarded AWS account.")
+    if not re.fullmatch(r"[a-z]{2}(?:-gov)?-[a-z]+-\\d", region):
+        raise ValueError("Provide a valid AWS region code.")
+    if not 10 <= len(note) <= 2000:
+        raise ValueError("Record a reason of 10 to 2000 characters for the configuration change.")
+    with _LOCK:
+        state = _read()
+        account = next((item for item in state["cloud_accounts"] if item.get("account_id") == account_id), None)
+        if account is None:
+            raise ValueError("Account is not onboarded.")
+        previous = {key: account.get(key) for key in ("name", "region", "role_arn")}
+        revised = account.get("region") != region or account.get("role_arn") != role_arn
+        account.update(name=name, role_arn=role_arn, region=region)
+        if revised:
+            account["config_revision"] = int(account.get("config_revision", 1)) + 1
+        state.setdefault("account_config_audit", []).append({
+            "id": secrets.token_hex(12), "account_id": account_id,
+            "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": reviewed_by,
+            "reason": note, "previous": previous,
+            "current": {key: account[key] for key in previous},
+            "config_revision": int(account.get("config_revision", 1)),
+            "collection_scope_changed": revised, "aws_resources_modified": False,
+        })
+        state["account_config_audit"] = state["account_config_audit"][-2000:]
+        _write(state)
+        return {k: v for k, v in account.items() if k != "external_id"}
+
+
+def account_configuration_audit(account_id: str) -> list[dict[str, Any]]:
+    with _LOCK:
+        return [dict(item) for item in _read().get("account_config_audit", [])
+                if item.get("account_id") == account_id]
 
 def get_account(account_id: str) -> dict[str, Any] | None:
     with _LOCK:
@@ -131,7 +178,7 @@ def get_account(account_id: str) -> dict[str, Any] | None:
 def save_billing_scan(account_id: str, result: dict[str, Any]) -> dict[str, Any]:
     with _LOCK:
         state = _read()
-        item = {"id": secrets.token_hex(8), "account_id": account_id, **result}
+        item = {"id": secrets.token_hex(8), "account_id": account_id, "config_revision": int(next((a.get("config_revision", 1) for a in state["cloud_accounts"] if a.get("account_id") == account_id), 1)), **result}
         state.setdefault("billing_scans", []).append(item)
         state["billing_scans"] = state["billing_scans"][-100:]
         _write(state)
@@ -164,6 +211,10 @@ def delete_account(account_id: str) -> bool:
         ]
         state["ebs_reviews"] = [
             item for item in state.get("ebs_reviews", [])
+            if item.get("account_id") != account_id
+        ]
+        state["account_config_audit"] = [
+            item for item in state.get("account_config_audit", [])
             if item.get("account_id") != account_id
         ]
         state["optimization_ledger"] = [
