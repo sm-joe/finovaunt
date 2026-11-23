@@ -160,6 +160,8 @@ def test_browser_cookie_session_survives_first_login_password_rotation(tmp_path,
         assert login["must_change_password"] is True
         assert "finovaunt_session=" in first_cookie
         assert "HttpOnly" in first_cookie
+        assert len(list(jar)) == 1, f"Browser rejected cookie: {first_cookie!r}"
+        assert list(jar)[0].value in dashboard_api.access_control._SESSIONS
         assert get_session()["authenticated"] is True
 
         changed, rotated_cookie = post("/api/auth/password", {
