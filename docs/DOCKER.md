@@ -102,6 +102,18 @@ This command displays the caller ARN but does not print AWS access keys. Never p
 
 A minimal target-role billing policy needs `ce:GetCostAndUsage` on `Resource: "*"`; add the documented regional EC2/RDS Describe permissions for inventory. The source identity separately needs `sts:AssumeRole` scoped to the exact target role ARN, and the target role must trust the source identity. Do not grant write privileges or attach AdministratorAccess just to make the collection work.
 
+## EBS Pricing, Kubernetes PV Correlation, and Review
+
+Fresh regional inventory collects actual EBS `Size` (GiB), `VolumeType`, provisioned `Iops`, `Throughput`, creation time, tags, attachment state and identifiers. It optionally enriches **unattached volumes** with the AWS Price List `pricing:GetProducts` storage-only rate for supported `gp2`/`gp3` types. It uses `AmazonEC2`, account's AWS region, `EBS:VolumeUsage` and the verified USD `GB-Mo` OnDemand price dimension. If price data is absent or ambiguous, monthly costs are **not estimable** rather than fabricated. Storage cost is an indicative **scenario** for a full hypothetical month, not Cost Explorer resource attribution and not verified reduction.
+
+For Kubernetes ownership, Finovaunt enumerates Amazon EKS clusters in the selected region with `eks:ListClusters` and `eks:DescribeCluster`. It attempts a **read-only** Kubernetes API `list persistentvolumes` request using the assumed AWS role's EKS authentication and TLS-validated cluster certificate. That role must be authorized by EKS access entries / Kubernetes RBAC to list PVs. Failure, a private endpoint outside container reach, zero clusters found, or partial pagination is reported as **not verified**; lack of a visible PV must never be interpreted as permission to delete a volume. Volume tags indicating EKS/PVC ownership remain an independent high-risk signal. Finovaunt does not mutate Kubernetes resources.
+
+Minimum additional target role IAM permissions (read-only) are `pricing:GetProducts` (region endpoint `us-east-1`, normally `Resource: "*"`), `eks:ListClusters`, and `eks:DescribeCluster`. Kubernetes RBAC is separate from IAM: cluster-side access must permit `get/list persistentvolumes`. Apply least privilege, and never grant edit/delete just to collect cost evidence.
+
+**Cost and saving semantics:** `possible_monthly_storage_reduction_usd` shows an illustrative storage-only maximum if the resource were eventually decommissioned. `estimated_monthly_savings_usd` is suppressed when a Kubernetes PV references the volume. `verified_savings_usd` remains absent until a separate measured before-and-after cost comparison. Storage pricing does not cover extra provisioned IOPS/throughput, snapshots, discounts, taxes or minimums. No candidate is auto-deletable. Existing scans remain accessible but require a **new AWS inventory collection** to acquire these new evidence fields.
+
+Human review is independent of execution: `POST /api/ebs-reviews` records `account_id`, the **current** inventory scan ID, unattached volume ID, decision (`approved_for_manual_review` or `rejected`) and an evidence-based note. `GET /api/ebs-reviews?account_id=...` retrieves the account's local audit trail. Reviews save a timestamp, user, and `infrastructure_applied=false`; they never execute AWS API mutations, Kubernetes commands, or Terraform apply. A stale scan or attached volume cannot be reviewed via this endpoint.
+
 ## Scan artifacts
 
 The dashboard displays the latest synced or locally provided artifact snapshot under `artifacts-live/`. Without a real snapshot, its data endpoints deliberately report unavailable evidence rather than inventing savings.
