@@ -73,16 +73,16 @@ export default function AuthenticatedShell() {
   if (session.must_change_password) return <PasswordScreen onDone={loadSession} busy={busy} setBusy={setBusy} />;
 
   return <>
-    <div className="fin-workspace-tools">
+    {view !== "dashboard" && <div className="fin-workspace-tools">
       <span className="fin-tools-brand"><span className="fin-auth-mark"><ShieldCheck size={17} /></span><strong>Finovaunt</strong></span>
       <div className="fin-tools-actions">
         <span className="fin-user-label"><UserRound size={15} /> {session.username}</span>
         <button onClick={() => setView("profile")} className={view === "profile" ? "selected" : ""}><UserRound size={15}/> Profile</button>
         <button onClick={() => setView("cloud")} className={view === "cloud" ? "selected" : ""}><Cloud size={15}/> Cloud accounts</button>
         <button onClick={() => void logout()} disabled={busy}><LogOut size={15}/> Sign out</button>
-      </div>
+      </div>}
     </div>
-    {view === "dashboard" ? <div className="fin-dashboard-content"><App onOpenCloud={() => setView("cloud")} /></div> : <div className="fin-settings-wrap"><button className="fin-back" onClick={() => setView("dashboard")}><ArrowLeft size={15}/> Back to dashboard</button>{view === "profile" ? <ProfileView username={session.username || "admin"} onPasswordChanged={loadSession} /> : <CloudView />}</div>}
+    {view === "dashboard" ? <div className="fin-dashboard-content"><App onOpenCloud={() => setView("cloud")} onOpenProfile={() => setView("profile")} onSignOut={() => void logout()} username={session.username || "admin"} /></div> : <div className="fin-settings-wrap"><button className="fin-back" onClick={() => setView("dashboard")}><ArrowLeft size={15}/> Back to dashboard</button>{view === "profile" ? <ProfileView username={session.username || "admin"} onPasswordChanged={loadSession} /> : <CloudView />}</div>}
     {error && <div className="fin-toast" role="alert">{error}<button onClick={() => setError("")}>Dismiss</button></div>}
   </>;
 }
