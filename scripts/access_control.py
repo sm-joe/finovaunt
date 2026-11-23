@@ -25,7 +25,13 @@ def _read() -> dict[str, Any]:
     path = _path()
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
-        state = {"user": {"username": "admin", "password": _hash("admin"), "must_change_password": True}, "cloud_accounts": [], "billing_scans": []}
+        bootstrap_password = os.getenv("FINOVAUNT_BOOTSTRAP_PASSWORD", "")
+        if len(bootstrap_password) < 12:
+            raise RuntimeError(
+                "Set FINOVAUNT_BOOTSTRAP_PASSWORD (at least 12 characters) "
+                "before starting a new Finovaunt installation."
+            )
+        state = {"user": {"username": "admin", "password": _hash(bootstrap_password), "must_change_password": True}, "cloud_accounts": [], "billing_scans": []}
         _write(state)
         return state
     try:
