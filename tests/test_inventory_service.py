@@ -79,3 +79,18 @@ def test_inventory_respects_resource_cap(monkeypatch):
     assert result["asset_count"] == 1
     assert result["truncated"] is True
     assert result["status"] == "partial"
+    assert result["observed_counts"] == {"ebs": 1, "ec2": 1, "rds": 1}
+    assert result["collected_counts"] == {"ebs": 1, "ec2": 0, "rds": 0}
+    assert result["observed_total"] == 3
+    assert result["assets"][0]["type"] == "ebs"
+
+
+def test_complete_inventory_reports_explicit_type_coverage(monkeypatch):
+    def client(service, *, region_name, **kwargs):
+        return {"ec2": FakeEC2(), "rds": FakeRDS(), "sts": FakeSTS()}[service]
+    monkeypatch.setitem(sys.modules, "boto3", types.SimpleNamespace(client=client))
+    result = collect_inventory(ACCOUNT)
+    assert result["truncated"] is False
+    assert result["observed_counts"] == {"ebs": 1, "ec2": 1, "rds": 1}
+    assert result["collected_counts"] == result["observed_counts"]
+    assert result["resource_cap"] == 500
