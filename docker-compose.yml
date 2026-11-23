@@ -1,5 +1,34 @@
 services:
+  # One-shot permission repair for existing bind-mounted data, including
+  # control-plane.json.tmp left behind by a previous root-owned deployment.
+  # The API itself remains permanently non-root.
+  init-data:
+    image: ghcr.io/sm-joe/finovaunt-api:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        mkdir -p /app/data
+        chown -R 10001:10001 /app/data
+        echo "Finovaunt control-plane directory ownership prepared for UID 10001."
+    volumes:
+      - ./data:/app/data
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+
   api:
+    depends_on:
+      init-data:
+        condition: service_completed_successfully
     image: ghcr.io/sm-joe/finovaunt-api:latest
     build:
       context: .
