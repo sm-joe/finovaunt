@@ -228,7 +228,7 @@ def delete_account(account_id: str) -> bool:
 def save_inventory_scan(account_id: str, result: dict[str, Any]) -> dict[str, Any]:
     with _LOCK:
         state = _read()
-        item = {"id": secrets.token_hex(8), "account_id": account_id, **result}
+        item = {"id": secrets.token_hex(8), "account_id": account_id, "config_revision": int(next((x.get("config_revision", 1) for x in state["cloud_accounts"] if x.get("account_id") == account_id), 1)), **result}
         # Atomic with scan persistence: a scan cannot be saved without its
         # corresponding history update, and failures do not invent outcomes.
         from src.utils.optimization_ledger import update_ledger
