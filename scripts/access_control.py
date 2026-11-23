@@ -31,7 +31,7 @@ def _read() -> dict[str, Any]:
                 "Set FINOVAUNT_BOOTSTRAP_PASSWORD (at least 12 characters) "
                 "before starting a new Finovaunt installation."
             )
-        state = {"user": {"username": "admin", "password": _hash(bootstrap_password), "must_change_password": True}, "cloud_accounts": [], "billing_scans": [], "inventory_scans": [], "recommendation_decisions": [], "ebs_reviews": []}
+        state = {"user": {"username": "admin", "password": _hash(bootstrap_password), "must_change_password": True}, "cloud_accounts": [], "billing_scans": [], "inventory_scans": [], "recommendation_decisions": [], "ebs_reviews": [], "optimization_ledger": []}
         _write(state)
         return state
     try:
@@ -42,6 +42,7 @@ def _read() -> dict[str, Any]:
         data.setdefault("inventory_scans", [])
         data.setdefault("recommendation_decisions", [])
         data.setdefault("ebs_reviews", [])
+        data.setdefault("optimization_ledger", [])
         return data
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         raise RuntimeError("Finovaunt control-plane state is unreadable; refusing to reset credentials or account records.") from exc
@@ -165,6 +166,10 @@ def delete_account(account_id: str) -> bool:
             item for item in state.get("ebs_reviews", [])
             if item.get("account_id") != account_id
         ]
+        state["optimization_ledger"] = [
+            item for item in state.get("optimization_ledger", [])
+            if item.get("account_id") != account_id
+        ]
         _write(state)
         return True
 
@@ -173,6 +178,12 @@ def save_inventory_scan(account_id: str, result: dict[str, Any]) -> dict[str, An
     with _LOCK:
         state = _read()
         item = {"id": secrets.token_hex(8), "account_id": account_id, **result}
+        # Atomic with scan persistence: a scan cannot be saved without its
+        # corresponding history update, and failures do not invent outcomes.
+        from src.utils.optimization_ledger import update_ledger
+        state["optimization_ledger"] = update_ledger(
+            state.get("optimization_ledger", []), account_id, item
+        )
         state.setdefault("inventory_scans", []).append(item)
         state["inventory_scans"] = state["inventory_scans"][-30:]
         _write(state)
@@ -269,3 +280,9 @@ def ebs_reviews(account_id: str) -> list[dict[str, Any]]:
     with _LOCK:
         return [dict(x) for x in _read().get("ebs_reviews", [])
                 if x.get("account_id") == account_id]
+
+
+def optimization_history(account_id: str) -> list[dict[str, Any]]:
+    with _LOCK:
+        return [dict(item) for item in _read().get("optimization_ledger", [])
+                if item.get("account_id") == account_id]
