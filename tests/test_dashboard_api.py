@@ -35,6 +35,7 @@ def test_health_endpoint_and_read_only_rejection() -> None:
 
 
 def test_scan_data_requires_login_and_cross_origin_mutations_are_blocked(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("FINOVAUNT_BOOTSTRAP_PASSWORD", "initial-test-password-2026")
     monkeypatch.setenv("FINOVAUNT_CONTROL_FILE", str(tmp_path / "control-plane.json"))
     server = ThreadingHTTPServer(("127.0.0.1", 0), dashboard_api.DashboardHandler)
     thread = Thread(target=server.serve_forever, daemon=True)
@@ -50,7 +51,7 @@ def test_scan_data_requires_login_and_cross_origin_mutations_are_blocked(tmp_pat
 
         request = Request(
             f"{base}/api/auth/login",
-            data=json.dumps({"username": "admin", "password": "admin"}).encode(),
+            data=json.dumps({"username": "admin", "password": "initial-test-password-2026"}).encode(),
             headers={"Content-Type": "application/json", "Origin": "https://evil.example"},
             method="POST",
         )
