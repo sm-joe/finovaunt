@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Cloud, LogOut, UserRound, ShieldCheck, ArrowLeft, RefreshCw } from "lucide-react";
+import { Cloud, LogOut, UserRound, ShieldCheck, ArrowLeft, RefreshCw, Layers3, Home, Settings2, Eye, EyeOff, LockKeyhole, ArrowRight, Server, ChartNoAxesCombined, CircleCheck, KeyRound, Database, Plus, Pencil, Trash2, HardDrive, CircleHelp } from "lucide-react";
 import App from "./App";
 import "./auth.css";
+import "./auth-enterprise.css";
 
 type Session = { authenticated: boolean; username?: string; must_change_password?: boolean };
 type CloudAccount = { id: string; name: string; provider: string; account_id: string; role_arn: string; region: string; status: string; created_at: string };
@@ -24,6 +25,7 @@ export default function AuthenticatedShell() {
   const [view, setView] = useState<View>("dashboard");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [signedOut, setSignedOut] = useState(false);
 
   const loadSession = useCallback(async () => {
     setChecking(true);
@@ -55,6 +57,7 @@ export default function AuthenticatedShell() {
         );
       }
       setSession(confirmed);
+      setSignedOut(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Login failed.");
     } finally {
@@ -63,27 +66,51 @@ export default function AuthenticatedShell() {
   }
   async function logout() {
     setBusy(true); setError("");
-    try { await request("/api/auth/logout", { method: "POST", body: "{}" }); setSession({ authenticated: false }); setView("dashboard"); }
+    try { await request("/api/auth/logout", { method: "POST", body: "{}" }); setSession({ authenticated: false }); setView("dashboard"); setSignedOut(true); }
     catch (e) { setError(e instanceof Error ? e.message : "Sign out failed."); }
     finally { setBusy(false); }
   }
 
-  if (checking) return <div className="fin-auth-loading"><div className="fin-auth-mark"><ShieldCheck /></div><strong>Finovaunt</strong><span>Checking your session…</span></div>;
-  if (!session?.authenticated) return <LoginScreen onLogin={login} busy={busy} error={error} />;
-  if (session.must_change_password) return <PasswordScreen onDone={loadSession} busy={busy} setBusy={setBusy} />;
+  if (checking) return <div className="fin-auth-loading fin-loading-new"><div className="fin-auth-mark"><Layers3 size={23}/></div><strong>Finovaunt</strong><span>Restoring your secure session…</span></div>;
+  if (!session?.authenticated) return <LoginScreen onLogin={login} busy={busy} error={error} signedOut={signedOut}/>;
+  if (session.must_change_password) return <PasswordScreen onDone={loadSession} busy={busy} setBusy={setBusy}/>;
 
+  const current = view==="cloud"?"Cloud Accounts":"Settings & Profile";
   return <>
-    {view !== "dashboard" && <div className="fin-workspace-tools">
-      <span className="fin-tools-brand"><span className="fin-auth-mark"><ShieldCheck size={17} /></span><strong>Finovaunt</strong></span>
-      <div className="fin-tools-actions">
-        <span className="fin-user-label"><UserRound size={15} /> {session.username}</span>
-        <button onClick={() => setView("profile")} className={view === "profile" ? "selected" : ""}><UserRound size={15}/> Profile</button>
-        <button onClick={() => setView("cloud")} className={view === "cloud" ? "selected" : ""}><Cloud size={15}/> Cloud accounts</button>
-        <button onClick={() => void logout()} disabled={busy}><LogOut size={15}/> Sign out</button>
-      </div>
+    {view==="dashboard" ? <div className="fin-dashboard-content"><App
+      onOpenCloud={()=>setView("cloud")} onOpenProfile={()=>setView("profile")}
+      onSignOut={()=>void logout()} username={session.username || "admin"}/></div> :
+    <div className="fv-shell fv-account-shell">
+      <aside className="sidebar fv-sidebar">
+        <div className="brand fv-brand"><div className="brand-symbol fv-logo"><Layers3 size={23}/></div><div><strong>Finovaunt</strong><span>AWS FinOps Platform</span></div></div>
+        <nav className="nav-list fv-nav" aria-label="Workspace navigation">
+          <span className="fv-nav-label">WORKSPACE</span>
+          <button type="button" className="nav-item" onClick={()=>setView("dashboard")}><Home size={18}/><span>Overview</span></button>
+          <button type="button" className="nav-item" onClick={()=>setView("dashboard")}><ChartNoAxesCombined size={18}/><span>FinOps Dashboard</span></button>
+          <span className="fv-nav-label fv-nav-label-secondary">ACCOUNT</span>
+          <button type="button" className={"nav-item "+(view==="cloud"?"active":"")} aria-current={view==="cloud"?"page":undefined} onClick={()=>setView("cloud")}><Cloud size={18}/><span>Cloud Accounts</span></button>
+          <button type="button" className={"nav-item "+(view==="profile"?"active":"")} aria-current={view==="profile"?"page":undefined} onClick={()=>setView("profile")}><Settings2 size={18}/><span>Settings & Profile</span></button>
+        </nav>
+        <div className="sidebar-bottom fv-sidebar-bottom"><div className="fv-workload-box"><span className="fv-workload-mark">aws</span><div><strong>AWS Only</strong><small>Read-only collector</small></div><ShieldCheck size={17}/></div><span className="version">FINOVAUNT · COST INTELLIGENCE</span></div>
+      </aside>
+      <main className="main fv-main">
+        <header className="topbar fv-topbar fv-account-topbar">
+          <div className="fv-account-breadcrumb"><span>Finovaunt</span><span>/</span><strong>{current}</strong></div>
+          <div className="fv-toolbar-right"><span className="fv-readonly"><ShieldCheck size={15}/> Read-only AWS access</span>
+            <button type="button" className="fv-avatar-button" title="Profile" onClick={()=>setView("profile")}><span className="fv-avatar">{(session.username || "AD").slice(0,2).toUpperCase()}</span><UserRound size={14}/></button>
+            <button type="button" className="fv-icon-action" aria-label="Sign out" title="Sign out" disabled={busy} onClick={()=>void logout()}><LogOut size={17}/></button>
+          </div>
+        </header>
+        <div className="fv-page fv-account-page">
+          <section className="fv-page-heading">
+            <div><span className="fv-page-kicker">ACCOUNT MANAGEMENT</span><h1>{current} <span className="fv-aws-tag">AWS</span></h1><p>{view==="cloud"?"Manage AWS connections and read-only collector evidence.":"Manage your Finovaunt administrator credentials and account security."}</p></div>
+            <button type="button" className="fv-outline-button" onClick={()=>setView("dashboard")}><ArrowLeft size={16}/> Back To Dashboard</button>
+          </section>
+          {view==="profile"?<ProfileView username={session.username || "admin"} onPasswordChanged={loadSession}/>:<CloudView/>}
+        </div>
+      </main>
     </div>}
-    {view === "dashboard" ? <div className="fin-dashboard-content"><App onOpenCloud={() => setView("cloud")} onOpenProfile={() => setView("profile")} onSignOut={() => void logout()} username={session.username || "admin"} /></div> : <div className="fin-settings-wrap"><button className="fin-back" onClick={() => setView("dashboard")}><ArrowLeft size={15}/> Back to dashboard</button>{view === "profile" ? <ProfileView username={session.username || "admin"} onPasswordChanged={loadSession} /> : <CloudView />}</div>}
-    {error && <div className="fin-toast" role="alert">{error}<button onClick={() => setError("")}>Dismiss</button></div>}
+    {error && view!=="dashboard" && <div className="fin-toast" role="alert">{error}<button type="button" onClick={()=>setError("")}>Dismiss</button></div>}
   </>;
 }
 
