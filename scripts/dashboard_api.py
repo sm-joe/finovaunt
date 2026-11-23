@@ -174,7 +174,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             try:
                 from src.tools.billing_service import collect_billing
                 evidence = collect_billing(account, external_id=str(body.get("external_id", "")))
-                result = access_control.save_billing_scan(account_id, evidence)
+                result = access_control.save_billing_scan(account_id, evidence, expected_revision=int(account.get("config_revision", 1)))
                 self._json(200, result)
             except Exception as exc:
                 # ClientError's raw message can include principal ARNs, policy
@@ -198,7 +198,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             try:
                 from src.tools.inventory_service import collect_inventory
                 inventory = collect_inventory(account, external_id=str(body.get("external_id", "")))
-                result = access_control.save_inventory_scan(account_id, inventory)
+                result = access_control.save_inventory_scan(account_id, inventory, expected_revision=int(account.get("config_revision", 1)))
             except Exception as exc:
                 # Only collection/persistence failures are AWS scan failures.
                 # A disconnected HTTP client must not trigger a second reply.
