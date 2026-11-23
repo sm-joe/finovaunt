@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { Activity, AlertCircle, ArrowUpRight, Boxes, Cloud, CircleDollarSign, Database, RefreshCw, ShieldCheck, Wallet } from "lucide-react";
+import { Activity, AlertCircle, ArrowUpRight, BarChart3, Bell, Boxes, Cloud, CircleDollarSign, Database, HardDrive, Home, Layers3, LogOut, PackageSearch, RefreshCw, Search, Settings2, ShieldCheck, Target, UserRound, Wallet, Zap } from "lucide-react";
+import FinovauntOverview from "./FinovauntOverview";
 import FinopsEvidence, { type FinOpsAssessment } from "./FinopsEvidence";
 
 type Account = { id: string; account_id: string; name: string; provider: string; role_arn: string; region: string; status: string };
@@ -42,7 +43,7 @@ function Metric({ label, value, detail, Icon }: { label: string; value: string; 
   return <article className="metric-card"><div className="metric-icon"><Icon size={19}/></div><span>{label}</span><strong style={{display: "block",fontSize: 27,margin: "9px 0"}}>{value}</strong><small>{detail}</small></article>;
 }
 
-export default function App({ onOpenCloud }: { onOpenCloud: () => void }) {
+export default function App({ onOpenCloud, onOpenProfile, onSignOut, username }: { onOpenCloud: () => void; onOpenProfile: () => void; onSignOut: () => void; username: string }) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [accountId, setAccountId] = useState("");
   const [data, setData] = useState<Dashboard | null>(null);
@@ -64,6 +65,7 @@ export default function App({ onOpenCloud }: { onOpenCloud: () => void }) {
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewMessage, setReviewMessage] = useState("");
   const [lastRefresh, setLastRefresh] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   const loadAccounts = useCallback(async () => {
     try {
@@ -155,28 +157,58 @@ export default function App({ onOpenCloud }: { onOpenCloud: () => void }) {
   const inventory = data?.inventory;
   const noEvidence = !billing && !inventory;
 
-  return <div className="app-shell">
-    <aside className="sidebar">
-      <div className="brand"><div className="brand-symbol"><Cloud size={21}/></div><div><strong>finovaunt</strong><span>AWS Cost Intelligence</span></div></div>
-      <div className="workspace-label">LIVE AWS WORKSPACE</div>
-      <nav className="nav-list" aria-label="Dashboard sections">
-        {tabs.map(label => <button key={label} className={"nav-item " + (tab === label ? "active" : "")} onClick={() => setTab(label)}><Activity size={17}/><span>{label}</span></button>)}
+  return <div className="app-shell fv-shell">
+    <aside className="sidebar fv-sidebar">
+      <div className="brand fv-brand"><div className="brand-symbol fv-logo"><Layers3 size={23}/></div><div><strong>Finovaunt</strong><span>AWS FinOps Platform</span></div></div>
+      <nav className="nav-list fv-nav" aria-label="Dashboard sections">
+        <span className="fv-nav-label">WORKSPACE</span>
+        {([
+          ["Overview", Home, "Overview"],
+          ["Review Candidates", Zap, "Recommendations"],
+          ["Assets", Boxes, "Resources"],
+          ["Cost Breakdown", BarChart3, "Cost Explorer"],
+          ["AWS FinOps", Layers3, "Cost Allocation & EKS"],
+          ["Scan History", Activity, "Scan History"],
+        ] as const).map(([value,Icon,label])=><button key={value} className={"nav-item "+(tab===value?"active":"")} aria-current={tab===value?"page":undefined} onClick={()=>setTab(value)}><Icon size={18}/><span>{label}</span></button>)}
+        <span className="fv-nav-label fv-nav-label-secondary">ACCOUNT</span>
+        <button className="nav-item" onClick={onOpenCloud}><Cloud size={18}/><span>AWS Accounts</span></button>
+        <button className="nav-item" onClick={onOpenProfile}><Settings2 size={18}/><span>Settings & Profile</span></button>
       </nav>
-      <div className="sidebar-bottom"><div className="security-note"><ShieldCheck size={17}/><div><strong>Read-only Access</strong><span>No AWS mutations or synthetic data</span></div></div><span className="version">FINOVAUNT · AWS</span></div>
+      <div className="sidebar-bottom fv-sidebar-bottom">
+        <div className="fv-workload-box"><span className="fv-workload-mark">aws</span><div><strong>AWS Only</strong><small>Read-only collector</small></div><ShieldCheck size={17}/></div>
+        <span className="version">FINOVAUNT · COST INTELLIGENCE</span>
+      </div>
     </aside>
-    <main className="main">
-      <header className="topbar"><div className="breadcrumb"><span>Finovaunt</span><span className="slash">/</span><strong>{tab}</strong></div><div className="topbar-actions"><span className="api-state online"><i/>Live AWS Evidence</span><button className="icon-button" onClick={() => void loadDashboard(accountId)} disabled={!accountId || loading} title="Reload collected results"><RefreshCw size={16}/></button></div></header>
-      <div className="page-content">
-        <section className="page-heading"><div><div className="eyebrow">AWS ACCOUNT INTELLIGENCE</div><h1>{tab === "Overview" ? "Cloud Cost Overview" : tab}</h1><p>Observed Cost Explorer billing and regional EC2, RDS, and EBS resources. No sample or fabricated data.</p></div><button className="primary-button" onClick={onOpenCloud}><Cloud size={16}/> Manage AWS Accounts</button></section>
-        <section className="panel" style={{marginBottom: 18}}>
-          {accounts.length === 0 ? <><h2>Connect Your First AWS Account</h2><p>Onboard a read-only IAM role, then collect actual billing and inventory evidence. No mock data is loaded.</p><button className="primary-button" onClick={onOpenCloud}><ArrowUpRight size={16}/> Onboard AWS Account</button></> :
-          <div style={{display: "flex",gap: 16,alignItems: "end",flexWrap: "wrap"}}>
-            <label style={{flex: "1 1 260px"}}>Onboarded AWS Account<select value={accountId} onChange={e => {setAccountId(e.target.value);setScanErrors([]);setExternalId("");setSourceStatus(null);setSourceError("");}}>{accounts.map(a => <option key={a.account_id} value={a.account_id}>{a.name} · {a.account_id} · {a.region}</option>)}</select></label>
-            <label style={{flex: "1 1 220px"}}>IAM External ID (only if role requires it)<input type="password" autoComplete="off" value={externalId} onChange={e => setExternalId(e.target.value)} placeholder="Not saved"/></label>
-            <button type="button" onClick={() => void checkSource()} disabled={checkingSource || !accountId}>{checkingSource ? "Checking…" : "Check AWS Credentials"}</button>
-            <button className="primary-button" onClick={() => void collectAWS()} disabled={scanning || !accountId}><RefreshCw size={16}/>{scanning ? "Collecting from AWS…" : "Collect Live AWS Data"}</button>
-          </div>}
+    <main className="main fv-main">
+      <header className="topbar fv-topbar">
+        <div className="fv-toolbar-left">
+          <label className="fv-toolbar-field fv-account-select"><span>Account Scope</span>
+            <select aria-label="AWS account scope" value={accountId} onChange={e=>{setAccountId(e.target.value);setScanErrors([]);setExternalId("");setSourceStatus(null);setSourceError("");setSearch("");}}>
+              {!accounts.length&&<option value="">No AWS accounts connected</option>}
+              {accounts.map(a=><option value={a.account_id} key={a.account_id}>{a.name} · {a.account_id}</option>)}
+            </select>
+          </label>
+          <div className="fv-toolbar-field fv-region-tag"><span>AWS Region</span><strong>{accounts.find(a=>a.account_id===accountId)?.region||"Not selected"}</strong></div>
+          <div className="fv-toolbar-field fv-period-tag"><span>Billing Period</span><strong>Current Month</strong></div>
+        </div>
+        <div className="fv-toolbar-right">
+          <label className="fv-toolbar-search"><Search size={16}/><input aria-label="Search collected services and recommendations" placeholder="Search services or resources…" value={search} onChange={e=>setSearch(e.target.value)}/></label>
+          <button type="button" className="fv-icon-action" title="Refresh dashboard evidence" aria-label="Refresh dashboard evidence" disabled={!accountId||loading} onClick={()=>{void loadDashboard(accountId);void loadFinops(accountId);}}><RefreshCw size={17}/></button>
+          <div className="fv-user-menu"><button type="button" className="fv-avatar-button" onClick={onOpenProfile} title="Open profile"><span className="fv-avatar">{(username||"A").slice(0,2).toUpperCase()}</span><UserRound size={14}/></button>
+            <button type="button" className="fv-icon-action fv-signout" onClick={onSignOut} title="Sign out" aria-label="Sign out"><LogOut size={16}/></button></div>
+        </div>
+      </header>
+      <div className="page-content fv-page">
+        <section className="page-heading fv-heading"><div><div className="fv-heading-title"><h1>{tab==="Overview"?"FinOps Overview":tab==="AWS FinOps"?"AWS FinOps Evidence":tab==="Review Candidates"?"Optimization Recommendations":tab==="Assets"?"AWS Resources":tab==="Cost Breakdown"?"Cost Explorer":"Scan History"}</h1><span className="fv-aws-tag">AWS</span></div><p>Spend, optimization and resource evidence across the selected AWS account.</p></div>
+          <div className="fv-heading-actions"><span className="fv-readonly"><ShieldCheck size={15}/> Read-only collector</span><button className="fv-outline-button" onClick={onOpenCloud}><Cloud size={16}/> Manage Accounts</button><button className="fv-primary-button" onClick={()=>void collectAWS()} disabled={!accountId||scanning}><RefreshCw size={16}/>{scanning?"Collecting…":"Collect AWS Data"}</button></div>
         </section>
+        {!accounts.length?<section className="panel fv-connect-panel"><Cloud size={24}/><div><h2>Connect your first AWS account</h2><p>Onboard the existing read-only collector role to begin cost and inventory collection.</p></div><button className="fv-primary-button" onClick={onOpenCloud}>Connect AWS <ArrowUpRight size={15}/></button></section>:
+        <details className="fv-collector-details"><summary><ShieldCheck size={16}/> Connection & Collection Settings <span>{accounts.find(a=>a.account_id===accountId)?.name} · {data?.account?.region||"AWS"}</span></summary>
+          <div className="fv-collector-controls"><label>IAM External ID (only when required)<input type="password" autoComplete="off" placeholder="Not saved" value={externalId} onChange={e=>setExternalId(e.target.value)}/></label>
+            <button className="fv-outline-button" type="button" onClick={()=>void checkSource()} disabled={checkingSource||!accountId}>{checkingSource?"Checking…":"Check AWS Credentials"}</button>
+            <button className="fv-outline-button" type="button" onClick={()=>void collectFinops()} disabled={finopsBusy||!accountId}>{finopsBusy?"Collecting…":"Collect FinOps Evidence"}</button>
+          </div>
+        </details>}
         {sourceStatus && <section className="panel" style={{marginBottom: 16}} aria-live="polite"><strong>AWS Source Identity</strong><p>{sourceStatus.status === "direct_role_ready" ? "Direct collector role ready" : "Source credentials found; target role assumption still needs verification"} · {sourceStatus.source_account_id}</p><small>{sourceStatus.source_principal_arn}</small><p>{sourceStatus.note}</p></section>}
         {sourceError && <div className="error-banner" role="alert"><AlertCircle size={18}/><div><strong>AWS Credentials Unavailable</strong><span>{sourceError}</span></div></div>}
         {error && <div className="error-banner" role="alert"><AlertCircle size={18}/><div><strong>Unable to Load Account Data</strong><span>{error}</span></div></div>}
@@ -184,20 +216,13 @@ export default function App({ onOpenCloud }: { onOpenCloud: () => void }) {
         {loading && <p role="status">Loading persisted AWS evidence…</p>}
         {accountId && !loading && noEvidence && !error && <section className="panel" style={{marginBottom: 20}}><h2>No AWS Data Collected Yet</h2><p>This account has been onboarded, but neither Cost Explorer nor inventory collection has completed. Click <strong>Collect Live AWS Data</strong> after configuring the API container's AWS credentials. No spend or resource count is assumed.</p></section>}
         {data && <div style={{marginBottom: 15,fontSize: 13,opacity: .8}}>Account: {data.account.account_id} · Region: {data.account.region} · Billing: {billing ? formatTime(billing.scanned_at) : "Not collected"} · Inventory: {inventory ? formatTime(inventory.scanned_at) : "Not collected"}{lastRefresh ? " · Dashboard refreshed " + formatTime(lastRefresh) : ""}</div>}
-        {tab === "Overview" && <>
-          <div className="metric-grid">
-            <Metric Icon={Wallet} label="Month-to-Date Cloud Spend" value={formatMoney(billing?.total_cost, billing?.currency)} detail={billing ? billing.period_start + " to " + billing.period_end_exclusive + " (provisional)" : "Cost Explorer not collected"}/>
-            <Metric Icon={Boxes} label="Observed Resources" value={inventory ? String(inventory.asset_count) : "Not available"} detail={inventory ? inventory.region + (inventory.truncated ? " · Partial inventory" : " · EC2, RDS, EBS") : "Inventory not collected"}/>
-            <Metric Icon={Activity} label="Review Candidates" value={inventory ? String(data?.review_candidates.length ?? 0) : "Not available"} detail="Unattached EBS only; human review required"/>
-            <Metric Icon={CircleDollarSign} label="Potential EBS Storage Reduction" value={data?.potential_ebs_savings_usd == null ? "Not estimable" : formatMoney(Number(data.potential_ebs_savings_usd))} detail={`${data?.ebs_price_coverage?.priced_candidates ?? 0}/${data?.ebs_price_coverage?.total_candidates ?? 0} candidates priced · hypothetical monthly storage only; verified savings: none`}/>
-          </div>
-          <div className="content-grid">
-            <section className="panel"><h2>Cost Explorer Spend by Service</h2>{billing ? billing.services.length ? <div className="fin-service-list">{[...billing.services].sort((a,b) => b.amount - a.amount).slice(0, 12).map(s => <div key={s.service}><span>{s.service}</span><strong>{formatMoney(s.amount, s.currency)}</strong></div>)}</div> : <Empty>Cost Explorer returned no service charges for this period.</Empty> : <Empty>Collect AWS billing to show real spend by service.</Empty>}</section>
-            <section className="panel"><h2>Collection Evidence</h2><div className="snapshot-row"><span>Billing Source</span><strong>{billing ? "AWS Cost Explorer" : "Not collected"}</strong></div><div className="snapshot-row"><span>Inventory Source</span><strong>{inventory ? "EC2 / RDS / EBS APIs" : "Not collected"}</strong></div><div className="snapshot-row"><span>Collection Scope</span><strong>{inventory?.region || data?.account.region || "—"}</strong></div><div className="snapshot-row"><span>Inventory Completeness</span><strong>{inventory ? (inventory.truncated ? "Partial · resource cap reached" : "Complete for queried services / region") : "Unknown"}</strong></div>
-            {inventory?.observed_counts && <><div className="snapshot-row"><span>Observed EBS / EC2 / RDS</span><strong>{inventory.observed_counts.ebs ?? 0} / {inventory.observed_counts.ec2 ?? 0} / {inventory.observed_counts.rds ?? 0}</strong></div><div className="snapshot-row"><span>Persisted EBS / EC2 / RDS</span><strong>{inventory.collected_counts?.ebs ?? 0} / {inventory.collected_counts?.ec2 ?? 0} / {inventory.collected_counts?.rds ?? 0}</strong></div></>}
-            {inventory?.truncated && <p role="alert">Only {inventory.asset_count} of {inventory.observed_total ?? "an unknown number of"} observed resources were retained (cap {inventory.resource_cap ?? "unknown"}). This is not a complete account assessment.</p>}<p className="context-note"><Database size={16}/> Service-level spend is not attributable to individual resources without additional AWS billing evidence. No savings are inferred.</p></section>
-          </div>
-        </>}
+        {tab === "Overview" && <FinovauntOverview
+          billing={billing} history={data?.billing_history||[]} inventory={inventory}
+          candidates={data?.review_candidates||[]} finops={finops}
+          potentialStorageSavings={data?.potential_ebs_savings_usd||null}
+          reviewedCount={data?.ebs_reviews?.length||0}
+          search={search} onNavigate={setTab}
+        />}
         {tab === "AWS FinOps" && <section className="panel table-panel">
           <h2>AWS FinOps · Cost Allocation and Optimization</h2>
           <p>Read-only assessment for AWS Cost Explorer tags, EC2/RDS utilization, S3 storage, EKS clusters and existing AWS Budgets. This does not execute shutdowns or claim unverified savings.</p>
