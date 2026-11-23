@@ -19,3 +19,9 @@ The API container runs read-only except for mounted artifact and control-plane d
 ## Production requirements
 
 Protect access through HTTPS, set secure cookies, and use a unique bootstrap secret. Cloud inventory and billing endpoints require a valid session. State-changing requests with untrusted Origin headers are rejected. Existing installations keep their stored password hash; the bootstrap password only applies to first initialization.
+
+## Read-only AWS inventory
+
+Onboarded accounts can run an EC2, RDS and EBS inventory from **Cloud Accounts**. Finovaunt assumes the configured role, verifies its account ID, and queries the configured region. IAM permissions include `ec2:DescribeInstances`, `ec2:DescribeVolumes`, `rds:DescribeDBInstances`, and `sts:GetCallerIdentity` in addition to the STS role assumption. Results are stored as bounded local snapshots (latest 30 across accounts) and can be removed together with an account.
+
+This inventory is not a cost attribution report. An unattached EBS volume is identified as **review only**; Finovaunt does not infer its recurring cost or assume it is safe to delete. The collector does not change AWS resources.
