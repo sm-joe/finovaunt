@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Activity, AlertCircle, ArrowUpRight, Boxes, Cloud, CircleDollarSign, Database, RefreshCw, ShieldCheck, Wallet } from "lucide-react";
+import FinopsEvidence, { type FinOpsAssessment } from "./FinopsEvidence";
 
 type Account = { id: string; account_id: string; name: string; provider: string; role_arn: string; region: string; status: string };
 type ServiceCost = { service: string; amount: number; amount_exact?: string; currency: string };
@@ -12,8 +13,6 @@ type HistoricEbs = { account_id: string; region: string; resource_id: string; na
 type AwsSourceStatus = { status: "direct_role_ready" | "assume_role_required"; source_account_id: string; source_principal_arn: string; target_role_arn: string; note: string; checked_at: string; role_assumption_verified: boolean };
 type Review = { id: string; inventory_scan_id: string; resource_id: string; decision: string; note: string; reviewed_by: string; reviewed_at: string; infrastructure_applied: false };
 type Dashboard = { source: "aws_collected"; account: Account; billing: Billing | null; inventory: Inventory | null; billing_history: History[]; review_candidates: Candidate[]; ebs_reviews: Review[]; optimization_history: HistoricEbs[]; potential_ebs_savings_usd?: string | null; ebs_price_coverage?: {priced_candidates:number; total_candidates:number}; estimated_savings: null; realized_savings: null; billing_status: string; inventory_status: string };
-type FinOpsSection = {status: string; reason?: string; evidence?: Record<string, unknown>};
-type FinOpsAssessment = {id: string; scanned_at: string; status: string; sections: Record<string, FinOpsSection>; read_only: boolean};
 type Tab = "Overview" | "Assets" | "Cost Breakdown" | "AWS FinOps" | "Review Candidates" | "Scan History";
 const tabs: Tab[] = ["Overview", "Assets", "Cost Breakdown", "AWS FinOps", "Review Candidates", "Scan History"];
 
@@ -204,17 +203,7 @@ export default function App({ onOpenCloud }: { onOpenCloud: () => void }) {
           <p>Read-only assessment for AWS Cost Explorer tags, EC2/RDS utilization, S3 storage, EKS clusters and existing AWS Budgets. This does not execute shutdowns or claim unverified savings.</p>
           <button className="primary-button" disabled={finopsBusy || !accountId} onClick={() => void collectFinops()}>{finopsBusy ? "Collecting Read-Only Evidence…" : "Collect AWS FinOps Evidence"}</button>
           {finopsError && <p role="alert">{finopsError}</p>}
-          {!finops ? <Empty>No AWS FinOps assessment collected for this account configuration.</Empty> : <>
-            <p>Collected: {formatTime(finops.scanned_at)} · {finops.status} · No AWS mutations</p>
-            {Object.entries(finops.sections).map(([name, section]) =>
-              <section key={name} style={{marginTop: 18}} aria-label={name}>
-                <h3>{name.replaceAll("_", " ").replace(/\\b\\w/g, m => m.toUpperCase())}</h3>
-                <p>Status: <strong>{section.status}</strong>{section.reason ? " · " + section.reason : ""}</p>
-                {section.status === "collected" && section.evidence && <details><summary>View collected AWS evidence</summary>
-                  <pre style={{whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12}}>{JSON.stringify(section.evidence, null, 2)}</pre>
-                </details>}
-              </section>)}
-          </>}
+          <FinopsEvidence report={finops}/>
         </section>}
         {tab === "Assets" && <section className="panel table-panel"><h2>Observed AWS Resources</h2>{inventory ? inventory.assets.length ? <div className="table-scroll"><table><thead><tr><th>Resource</th><th>Type</th><th>State</th><th>Size</th><th>Region</th><th>Monthly Cost</th></tr></thead><tbody>{inventory.assets.map(a => <tr key={a.type + a.id}><td><strong>{a.name}</strong><small className="subline">{a.id}</small></td><td>{a.type.toUpperCase()}</td><td>{a.state}</td><td>{a.size}</td><td>{a.region}</td><td>Not attributed</td></tr>)}</tbody></table></div> : <Empty>AWS returned zero EC2, RDS, or EBS resources in the selected region.</Empty> : <Empty>Inventory not collected. Run an AWS collection to list actual resources.</Empty>}</section>}
         {tab === "Cost Breakdown" && <section className="panel table-panel"><h2>Account-Level Billing · Cost Explorer</h2>{billing ? <><p>Unblended cost from {billing.period_start} through {billing.period_end_exclusive} (exclusive). Current month values are provisional.</p><div className="table-scroll"><table><thead><tr><th>AWS Service</th><th>Observed Spend</th><th>Currency</th></tr></thead><tbody>{[...billing.services].sort((a,b) => b.amount - a.amount).map(s => <tr key={s.service}><td>{s.service}</td><td>{formatMoney(s.amount, s.currency)}</td><td>{s.currency}</td></tr>)}</tbody></table></div></> : <Empty>No Cost Explorer billing collected for this account.</Empty>}</section>}
