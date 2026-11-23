@@ -31,7 +31,7 @@ def _read() -> dict[str, Any]:
                 "Set FINOVAUNT_BOOTSTRAP_PASSWORD (at least 12 characters) "
                 "before starting a new Finovaunt installation."
             )
-        state = {"user": {"username": "admin", "password": _hash(bootstrap_password), "must_change_password": True}, "cloud_accounts": [], "billing_scans": [], "inventory_scans": []}
+        state = {"user": {"username": "admin", "password": _hash(bootstrap_password), "must_change_password": True}, "cloud_accounts": [], "billing_scans": [], "inventory_scans": [], "recommendation_decisions": []}
         _write(state)
         return state
     try:
@@ -40,6 +40,7 @@ def _read() -> dict[str, Any]:
             raise ValueError("invalid control state")
         data.setdefault("billing_scans", [])
         data.setdefault("inventory_scans", [])
+        data.setdefault("recommendation_decisions", [])
         return data
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         raise RuntimeError("Finovaunt control-plane state is unreadable; refusing to reset credentials or account records.") from exc
@@ -180,3 +181,46 @@ def latest_inventory_scan(account_id: str) -> dict[str, Any] | None:
             if item.get("account_id") == account_id
         ]
         return matches[-1] if matches else None
+
+
+def record_recommendation_decision(
+    *,
+    run_id: str,
+    resource_id: str,
+    action: str,
+    note: str,
+    reviewed_by: str,
+) -> dict[str, Any]:
+    """Append a human decision. This never executes a Terraform change."""
+    if action not in {"approved", "rejected"}:
+        raise ValueError("Decision must be approved or rejected.")
+    if not run_id.strip() or not resource_id.strip() or len(resource_id) > 256:
+        raise ValueError("A valid run and resource are required.")
+    if len(note.strip()) < 10 or len(note) > 2000:
+        raise ValueError("A review note must contain 10 to 2000 characters.")
+    with _LOCK:
+        state = _read()
+        from datetime import datetime, timezone
+        item = {
+            "id": secrets.token_hex(12),
+            "run_id": run_id,
+            "resource_id": resource_id,
+            "decision": action,
+            "note": note.strip(),
+            "reviewed_by": reviewed_by,
+            "reviewed_at": datetime.now(timezone.utc).isoformat(),
+            "infrastructure_applied": False,
+        }
+        state.setdefault("recommendation_decisions", []).append(item)
+        state["recommendation_decisions"] = state["recommendation_decisions"][-1000:]
+        _write(state)
+        return item
+
+
+def recommendation_decisions(run_id: str | None = None) -> list[dict[str, Any]]:
+    with _LOCK:
+        items = _read().get("recommendation_decisions", [])
+        return [
+            dict(item) for item in items
+            if run_id is None or item.get("run_id") == run_id
+        ]
