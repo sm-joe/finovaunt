@@ -52,3 +52,43 @@ jobs:
         run: |
           docker image inspect finovaunt-api:ci --format '{{.Id}}'
           docker image inspect finovaunt-dashboard:ci --format '{{.Id}}'
+
+  compose-runtime-smoke:
+    name: Boot API and Dashboard on Docker Compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      FINOVAUNT_BOOTSTRAP_PASSWORD: ci-runtime-bootstrap-pass-2026
+    steps:
+      - name: Check out Repository
+        uses: actions/checkout@v7
+
+      - name: Boot Containers with Empty Persistent State
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p data artifacts-live
+          docker compose up -d --build
+          docker compose ps
+
+      - name: Check API Health and Frontend HTTP
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8787/api/health >/tmp/finovaunt-health.json; then
+              break
+            fi
+            sleep 2
+          done
+          python -c 'import json; d=json.load(open("/tmp/finovaunt-health.json")); assert d.get("status") == "ok" or d.get("read_only") is True'
+          curl --fail --silent --show-error http://127.0.0.1:4173/ >/tmp/finovaunt-frontend.html
+          grep -qi '<html' /tmp/finovaunt-frontend.html
+
+      - name: Inspect Container Status on Failure
+        if: failure()
+        run: docker compose logs --tail=120 api frontend init-data
+
+      - name: Shut Down Test Containers
+        if: always()
+        run: docker compose down
