@@ -114,6 +114,12 @@ Minimum additional target role IAM permissions (read-only) are `pricing:GetProdu
 
 Human review is independent of execution: `POST /api/ebs-reviews` records `account_id`, the **current** inventory scan ID, unattached volume ID, decision (`approved_for_manual_review` or `rejected`) and an evidence-based note. `GET /api/ebs-reviews?account_id=...` retrieves the account's local audit trail. Reviews save a timestamp, user, and `infrastructure_applied=false`; they never execute AWS API mutations, Kubernetes commands, or Terraform apply. A stale scan or attached volume cannot be reviewed via this endpoint.
 
+## Inventory completeness and resource safety
+
+Finovaunt inventories EBS first, then EC2 and RDS, so the default 500-resource safety cap does not hide EBS optimization candidates behind large EC2 fleets. The collector still queries each selected-region paginator to count all returned resources and reports `observed_counts`, `collected_counts`, `observed_total`, `resource_cap`, and `truncated`. A resource-cap hit is a **partial scan**, never an exhaustive empty/no-candidate declaration. Kubernetes ownership and EBS pricing depend on the retained volume evidence; absent entries from a truncated snapshot are unknown, not resolved.
+
+This scanner remains **single-region** per onboarded account. Do not describe it as an all-region inventory until region discovery and exhaustive fan-out have been implemented and verified.
+
 ## Optimization history after EBS cleanup
 
 Finovaunt now keeps a per-account, per-region historical EBS candidate ledger independent of the latest inventory scan. It records initial and last observation, scan IDs, observed state, real pricing/PV evidence if collected, and whether a volume is still unattached, subsequently attached, or simply **not observed in the latest complete inventory**.
