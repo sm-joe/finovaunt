@@ -105,5 +105,7 @@ def test_incomplete_eks_evidence_is_marked_unverified(monkeypatch):
     ev = items[0]["optimization_evidence"]
     assert ev["kubernetes"]["status"] == "not_verified"
     assert ev["confidence"] == "low"
+    assert ev["estimated_monthly_savings_usd"] is None
+    assert ev["possible_monthly_storage_reduction_usd"] == "4.00"
     assert ev["risk"] == "high"
     assert ev["can_auto_delete"] is False
