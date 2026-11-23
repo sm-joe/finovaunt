@@ -31,7 +31,7 @@ def _read() -> dict[str, Any]:
                 "Set FINOVAUNT_BOOTSTRAP_PASSWORD (at least 12 characters) "
                 "before starting a new Finovaunt installation."
             )
-        state = {"user": {"username": "admin", "password": _hash(bootstrap_password), "must_change_password": True}, "cloud_accounts": [], "billing_scans": [], "inventory_scans": [], "recommendation_decisions": [], "ebs_reviews": [], "optimization_ledger": [], "account_config_audit": []}
+        state = {"user": {"username": "admin", "password": _hash(bootstrap_password), "must_change_password": True}, "cloud_accounts": [], "billing_scans": [], "inventory_scans": [], "recommendation_decisions": [], "ebs_reviews": [], "optimization_ledger": [], "account_config_audit": [], "finops_assessments": [], "nonprod_schedules": []}
         _write(state)
         return state
     try:
@@ -44,6 +44,8 @@ def _read() -> dict[str, Any]:
         data.setdefault("ebs_reviews", [])
         data.setdefault("optimization_ledger", [])
         data.setdefault("account_config_audit", [])
+        data.setdefault("finops_assessments", [])
+        data.setdefault("nonprod_schedules", [])
         return data
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         raise RuntimeError("Finovaunt control-plane state is unreadable; refusing to reset credentials or account records.") from exc
@@ -218,6 +220,8 @@ def delete_account(account_id: str) -> bool:
             item for item in state.get("ebs_reviews", [])
             if item.get("account_id") != account_id
         ]
+        for field in ("finops_assessments", "nonprod_schedules"):
+            state[field] = [x for x in state.get(field, []) if x.get("account_id") != account_id]
         state["account_config_audit"] = [
             item for item in state.get("account_config_audit", [])
             if item.get("account_id") != account_id
@@ -228,6 +232,35 @@ def delete_account(account_id: str) -> bool:
         ]
         _write(state)
         return True
+
+
+def save_finops_assessment(account_id: str, result: dict[str, Any], *,
+                           expected_revision: int) -> dict[str, Any]:
+    """Bounded local evidence history, guarded against changes mid-scan."""
+    with _LOCK:
+        state = _read()
+        current = next((a for a in state["cloud_accounts"] if a.get("account_id") == account_id), None)
+        if current is None or int(current.get("config_revision", 1)) != expected_revision:
+            raise ValueError("Account collector configuration changed during assessment.")
+        item = {"id": secrets.token_hex(12), **result, "account_id": account_id,
+                "config_revision": expected_revision}
+        state.setdefault("finops_assessments", []).append(item)
+        state["finops_assessments"] = state["finops_assessments"][-40:]
+        _write(state)
+        return item
+
+
+def latest_finops_assessment(account_id: str) -> dict[str, Any] | None:
+    with _LOCK:
+        state = _read()
+        account = next((a for a in state["cloud_accounts"] if a.get("account_id") == account_id), None)
+        if account is None:
+            return None
+        current = int(account.get("config_revision", 1))
+        matching = [a for a in state.get("finops_assessments", [])
+                    if a.get("account_id") == account_id
+                    and int(a.get("config_revision", 1)) == current]
+        return dict(matching[-1]) if matching else None
 
 
 def save_inventory_scan(account_id: str, result: dict[str, Any], *, expected_revision: int | None = None) -> dict[str, Any]:
