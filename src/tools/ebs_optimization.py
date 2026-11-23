@@ -213,8 +213,13 @@ def enrich_ebs(assets: list[dict], *, region: str, session) -> dict:
                 "pv_references": matches, "tags": _kubernetes_refs(tags),
             },
             "possible_monthly_storage_reduction_usd": str(storage.quantize(Decimal("0.01"))) if storage is not None else None,
-            "estimated_monthly_savings_usd": None if correlation == "pv_found" else (
-                str(storage.quantize(Decimal("0.01"))) if storage is not None else None
+            # Only promote a storage quote to an estimate when the live
+            # discovered EKS PV listing completed and found no matching PV.
+            # A Kubernetes tag or missing cluster access remains a blocker.
+            "estimated_monthly_savings_usd": (
+                str(storage.quantize(Decimal("0.01")))
+                if storage is not None and correlation == "no_pv_found_in_discovered_eks"
+                else None
             ),
             "verified_savings_usd": None,
             "confidence": "blocked" if matches else ("low" if correlation == "not_verified" or k8s_tagged else "medium"),
