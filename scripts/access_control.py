@@ -181,9 +181,15 @@ def save_inventory_scan(account_id: str, result: dict[str, Any]) -> dict[str, An
         # Atomic with scan persistence: a scan cannot be saved without its
         # corresponding history update, and failures do not invent outcomes.
         from src.utils.optimization_ledger import update_ledger
-        state["optimization_ledger"] = update_ledger(
-            state.get("optimization_ledger", []), account_id, item
-        )
+        ledger = state.get("optimization_ledger", [])
+        # Backfill solely from previously persisted real inventory snapshots
+        # when upgrading an older Finovaunt installation. Do not manufacture
+        # candidates from volume names or reported savings.
+        if not ledger and state.get("inventory_scans"):
+            for earlier in state["inventory_scans"]:
+                if earlier.get("account_id"):
+                    ledger = update_ledger(ledger, earlier["account_id"], earlier)
+        state["optimization_ledger"] = update_ledger(ledger, account_id, item)
         state.setdefault("inventory_scans", []).append(item)
         state["inventory_scans"] = state["inventory_scans"][-30:]
         _write(state)
@@ -284,5 +290,12 @@ def ebs_reviews(account_id: str) -> list[dict[str, Any]]:
 
 def optimization_history(account_id: str) -> list[dict[str, Any]]:
     with _LOCK:
-        return [dict(item) for item in _read().get("optimization_ledger", [])
-                if item.get("account_id") == account_id]
+        state = _read()
+        ledger = state.get("optimization_ledger", [])
+        if not ledger and state.get("inventory_scans"):
+            # Read-only compatibility for retained scans predating this feature.
+            from src.utils.optimization_ledger import update_ledger
+            for scan in state["inventory_scans"]:
+                if scan.get("account_id"):
+                    ledger = update_ledger(ledger, scan["account_id"], scan)
+        return [dict(item) for item in ledger if item.get("account_id") == account_id]
