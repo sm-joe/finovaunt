@@ -71,3 +71,26 @@ def test_account_role_must_match_account_and_removal_purges_history(tmp_path, mo
     assert not access_control.delete_account("123456789012")
     assert access_control.list_accounts() == []
     assert access_control.billing_history("123456789012") == []
+
+
+def test_recommendation_decisions_are_auditable_and_never_apply_infrastructure(tmp_path, monkeypatch):
+    import pytest
+    monkeypatch.setenv("FINOVAUNT_BOOTSTRAP_PASSWORD", "initial-test-password-2026")
+    monkeypatch.setenv("FINOVAUNT_CONTROL_FILE", str(tmp_path / "control-plane.json"))
+    with pytest.raises(ValueError):
+        access_control.record_recommendation_decision(
+            run_id="scan1", resource_id="i-abc", action="approved", note="short", reviewed_by="admin"
+        )
+    with pytest.raises(ValueError):
+        access_control.record_recommendation_decision(
+            run_id="scan1", resource_id="i-abc", action="applied", note="This must be rejected.", reviewed_by="admin"
+        )
+    record = access_control.record_recommendation_decision(
+        run_id="scan1", resource_id="i-abc", action="approved",
+        note="Human reviewed the evidence and approved proposal preparation.",
+        reviewed_by="admin",
+    )
+    assert record["infrastructure_applied"] is False
+    assert record["reviewed_by"] == "admin"
+    assert access_control.recommendation_decisions("scan1")[0]["id"] == record["id"]
+    assert access_control.recommendation_decisions("other-run") == []
