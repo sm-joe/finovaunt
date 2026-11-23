@@ -163,4 +163,4 @@ Restore only after stopping the API and verifying the backup's integrity and sou
 
 ## Release boundary
 
-Local Compose configuration and CI validation do not imply that images were built, inspected and deployed in a production-like environment. The security and Docker image build workflows are temporarily disabled at the owner's request. They must be restored and pass before stable v1.0.0.
+Security gates and real API/dashboard Docker image builds have been restored to CI, together with a clean-start Compose HTTP smoke test. A clean CI container build is not a signed distribution and does not replace live AWS acceptance, persistent upgrade/rollback testing, or deployment verification. The repository remains unreleased as stable v1.0.0 until those gates pass.
