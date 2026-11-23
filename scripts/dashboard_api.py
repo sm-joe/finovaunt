@@ -92,7 +92,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         route = urlparse(self.path).path.rstrip("/") or "/"
-        if route not in ("/api/auth/login", "/api/auth/logout", "/api/auth/password", "/api/cloud-accounts", "/api/billing-scans", "/api/inventory-scans", "/api/recommendation-decisions", "/api/ebs-reviews"):
+        if route not in ("/api/auth/login", "/api/auth/logout", "/api/auth/password", "/api/cloud-accounts", "/api/billing-scans", "/api/inventory-scans", "/api/recommendation-decisions", "/api/ebs-reviews") and not re.fullmatch(r"/api/cloud-accounts/[0-9]{12}/configuration", route):
             self._json(405, {"error": "method_not_allowed", "message": "This API endpoint does not accept POST requests."})
             return
         try:
@@ -149,6 +149,22 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self._json(201, item)
             except ValueError as exc: self._json(400, {"error":"invalid_account","message":str(exc)})
             return
+        if re.fullmatch(r"/api/cloud-accounts/[0-9]{12}/configuration", route):
+            account_id = route.split("/")[3]
+            try:
+                updated = access_control.update_account_configuration(
+                    account_id=account_id,
+                    name=str(body.get("name", "")),
+                    role_arn=str(body.get("role_arn", "")),
+                    region=str(body.get("region", "")),
+                    reviewed_by=str(current["username"]),
+                    note=str(body.get("reason", "")),
+                )
+            except ValueError as exc:
+                self._json(400, {"error": "invalid_account_configuration", "message": str(exc)})
+                return
+            self._json(200, updated)
+            return
         if route == "/api/billing-scans":
             account_id = str(body.get("account_id", ""))
             account = access_control.get_account(account_id)
@@ -158,7 +174,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             try:
                 from src.tools.billing_service import collect_billing
                 evidence = collect_billing(account, external_id=str(body.get("external_id", "")))
-                result = access_control.save_billing_scan(account_id, evidence)
+                result = access_control.save_billing_scan(account_id, evidence, expected_revision=int(account.get("config_revision", 1)))
                 self._json(200, result)
             except Exception as exc:
                 # ClientError's raw message can include principal ARNs, policy
@@ -182,7 +198,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             try:
                 from src.tools.inventory_service import collect_inventory
                 inventory = collect_inventory(account, external_id=str(body.get("external_id", "")))
-                result = access_control.save_inventory_scan(account_id, inventory)
+                result = access_control.save_inventory_scan(account_id, inventory, expected_revision=int(account.get("config_revision", 1)))
             except Exception as exc:
                 # Only collection/persistence failures are AWS scan failures.
                 # A disconnected HTTP client must not trigger a second reply.
