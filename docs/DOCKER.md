@@ -215,7 +215,7 @@ docker compose up -d --force-recreate api frontend
 docker compose ps
 ```
 
-The backup utility validates SHA-256 checksums for each archive entry, refuses symlinks, unsafe paths, invalid control-plane JSON and oversized entries. Restored state uses restrictive file permissions; stale files absent from the backup are not automatically deleted. A restore does not touch AWS. It cannot retroactively reconstruct deleted scans if no previous backup exists. A successful backup/restore test is not a replacement for your own periodic encrypted backups or retention policy.
+If your host user cannot read the UID 10001-owned control-plane file, run the host-side backup/verify commands with `sudo` while services are stopped. Do not weaken file permissions or expose the archive. After a privileged restore, the Compose `init-data` helper restores the correct container ownership.\n\nThe backup utility validates SHA-256 checksums for each archive entry, refuses symlinks, unsafe paths, invalid control-plane JSON and oversized entries. Restored state uses restrictive file permissions; stale files absent from the backup are not automatically deleted. A restore does not touch AWS. It cannot retroactively reconstruct deleted scans if no previous backup exists. A successful backup/restore test is not a replacement for your own periodic encrypted backups or retention policy.
 
 ## Troubleshooting
 
