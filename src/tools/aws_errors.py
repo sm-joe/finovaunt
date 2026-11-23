@@ -6,7 +6,7 @@ to browser clients. AWS stage + allowlisted error code are sufficient.
 from __future__ import annotations
 
 import re
-from typing import Callable, TypeVar
+from typing import Callable, TypeVar, Iterator, Iterable
 from botocore.exceptions import (
     BotoCoreError, ClientError, NoCredentialsError, PartialCredentialsError,
     CredentialRetrievalError, EndpointConnectionError,
@@ -42,6 +42,9 @@ _GUIDANCE = {
     "inventory": (
         "Allow read-only EC2/RDS Describe actions in the selected account/region."
     ),
+    "inventory_ec2_volumes": "Verify ec2:DescribeVolumes for the assumed role and selected region.",
+    "inventory_ec2_instances": "Verify ec2:DescribeInstances for the assumed role and selected region.",
+    "inventory_rds": "Verify rds:DescribeDBInstances for the assumed role and selected region.",
 }
 
 
@@ -82,3 +85,14 @@ def aws_call(stage: str, fn: Callable[..., T], **kwargs) -> T:
         raise AWSAccessError(stage, "EndpointUnreachable", "The API container cannot reach the AWS endpoint. Check networking, DNS and region.") from exc
     except BotoCoreError as exc:
         raise AWSAccessError(stage, "SDKError") from exc
+
+
+def aws_pages(stage: str, paginator: Iterable[dict]) -> Iterator[dict]:
+    """Catch AWS errors raised while advancing paginated responses, not just paginate()."""
+    iterator = iter(paginator)
+    while True:
+        try:
+            page = aws_call(stage, lambda: next(iterator))
+        except StopIteration:
+            return
+        yield page
