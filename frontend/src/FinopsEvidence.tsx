@@ -31,7 +31,7 @@ type BudgetEvidence = {budgets?: Array<{
 }>};
 
 const humanName: Record<string,string> = {
-  cost_allocation: "Cost Allocation By Team & Project",
+  cost_allocation: "Costs By Team, Project, Environment & Region",
   rightsizing: "EC2 & RDS Optimization Reviews",
   s3: "S3 Bucket Storage",
   eks: "Amazon EKS",
@@ -71,13 +71,13 @@ export default function FinopsEvidence({report}: {report: FinOpsAssessment | nul
   return <div aria-label="Collected AWS FinOps evidence">
     <p role="status">Collected: {new Date(report.scanned_at).toLocaleString()} · {report.status} · Read-only collection</p>
     <Section title={humanName.cost_allocation} name="cost_allocation" section={sections.cost_allocation}>
-      <EvidenceNotice message="Month-to-date AWS Cost Explorer amounts. Activated cost allocation tags are required. Unallocated charges remain visible; tag totals are not per-resource costs."/>
-      {(["team", "project", "environment"] as const).map(key => {
+      <EvidenceNotice message="Month-to-date AWS Cost Explorer spend for the selected linked account. Team/Project/Environment require activated cost allocation tags; Region comes from AWS billing dimensions. Unallocated charges are explicit, not resource-level costs."/>
+      {(["team", "project", "environment", "region"] as const).map(key => {
         const group = allocation?.allocation?.[key];
         return <div key={key} style={{marginTop: 18}}>
           <h4 style={{textTransform: "capitalize"}}>{key}</h4>
           {group?.groups?.length ? <div className="table-scroll"><table>
-            <thead><tr><th>{key === "environment" ? "Environment" : key === "team" ? "Team" : "Project"}</th><th>Observed Spend</th></tr></thead>
+            <thead><tr><th>{key === "environment" ? "Environment" : key === "team" ? "Team" : key === "region" ? "AWS Region" : "Project"}</th><th>Observed Spend</th></tr></thead>
             <tbody>{group.groups.map((item, i) =>
               <tr key={item.name + i}><td>{item.name}</td><td>{showMoney(item.cost_exact,group.currency)}</td></tr>)}</tbody>
           </table></div> : <EvidenceNotice message="No activated tag allocation data returned."/>}

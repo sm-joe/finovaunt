@@ -16,16 +16,20 @@ def test_cost_allocation_preserves_exact_tagged_and_unallocated_spend(monkeypatc
         def get_cost_and_usage(self, **params):
             calls.append(params)
             key = params["GroupBy"][0]["Key"]
+            assert params["Filter"]["Dimensions"] == {"Key": "LINKED_ACCOUNT", "Values": ["123456789012"]}
+            dimension_key = "us-east-1" if key == "REGION" else key + "$Engineering"
             return {"ResultsByTime": [{"Groups": [
-                {"Keys": [key + "$Engineering"],
+                {"Keys": [dimension_key],
                  "Metrics": {"UnblendedCost": {"Amount": "10.1200000001", "Unit": "USD"}}},
-                {"Keys": [key + "$"],
+                {"Keys": ["" if key == "REGION" else key + "$"],
                  "Metrics": {"UnblendedCost": {"Amount": "2.2", "Unit": "USD"}}},
             ]}]}
     monkeypatch.setattr(finops_core, "_client", lambda service, region, creds: CE())
-    result = finops_core.collect_cost_allocation({},
+    result = finops_core.collect_cost_allocation({}, account_id="123456789012",
         now=datetime(2026, 11, 23, tzinfo=timezone.utc))
-    assert len(calls) == 3
+    assert len(calls) == 4
+    assert result["allocation"]["region"]["groups"][0]["name"] == "Unallocated"
+    assert any(group["name"] == "us-east-1" for group in result["allocation"]["region"]["groups"])
     assert result["period_start"] == "2026-11-01"
     assert result["allocation"]["team"]["groups"][0]["cost_exact"] == "10.1200000001"
     assert result["allocation"]["team"]["unallocated_cost_exact"] == "2.2"

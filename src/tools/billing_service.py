@@ -38,6 +38,7 @@ def collect_billing(account: dict, *, external_id: str = "", today: date | None 
         "Granularity": "MONTHLY",
         "Metrics": ["UnblendedCost"],
         "GroupBy": [{"Type": "DIMENSION", "Key": "SERVICE"}],
+        "Filter": {"Dimensions": {"Key": "LINKED_ACCOUNT", "Values": [account_id]}},
     }
 
     services: dict[str, Decimal] = {}

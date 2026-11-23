@@ -56,7 +56,7 @@ def _ce_pages(client, query: dict) -> list[dict]:
     raise ValueError("Cost Explorer pagination exceeded the safe limit.")
 
 
-def collect_cost_allocation(credentials: dict, *, now: datetime | None = None) -> dict:
+def collect_cost_allocation(credentials: dict, *, account_id: str, now: datetime | None = None) -> dict:
     """Aggregate tag spend using Cost Explorer (no invented resource attribution).
 
     AWS requires activation of user-defined cost allocation tags, and tags
@@ -65,13 +65,17 @@ def collect_cost_allocation(credentials: dict, *, now: datetime | None = None) -
     current = now or _utc_now()
     start = current.date().replace(day=1).isoformat()
     end = (current.date() + timedelta(days=1)).isoformat()
+    if len(account_id) != 12 or not account_id.isdigit():
+        raise ValueError("A valid AWS linked account ID is required.")
     ce = _client("ce", "us-east-1", credentials)
     output = {}
-    for key in TAG_KEYS:
+    for key in (*TAG_KEYS, "REGION"):
+        group_type = "DIMENSION" if key == "REGION" else "TAG"
         query = {
             "TimePeriod": {"Start": start, "End": end},
             "Granularity": "MONTHLY", "Metrics": ["UnblendedCost"],
-            "GroupBy": [{"Type": "TAG", "Key": key}],
+            "GroupBy": [{"Type": group_type, "Key": key}],
+            "Filter": {"Dimensions": {"Key": "LINKED_ACCOUNT", "Values": [account_id]}},
         }
         groups: dict[str, Decimal] = {}
         currency = None
@@ -82,7 +86,7 @@ def collect_cost_allocation(credentials: dict, *, now: datetime | None = None) -
                 for group in period.get("Groups", []):
                     raw = str((group.get("Keys") or [""])[0])
                     # CE returns TAG grouping as Key$Value or Key$ for absent tags.
-                    value = raw.split("$", 1)[1] if raw.startswith(key + "$") else ""
+                    value = raw if key == "REGION" else (raw.split("$", 1)[1] if raw.startswith(key + "$") else "")
                     name = value.strip() or "Unallocated"
                     metric = group.get("Metrics", {}).get("UnblendedCost", {})
                     unit = str(metric.get("Unit", "USD"))
@@ -96,7 +100,7 @@ def collect_cost_allocation(credentials: dict, *, now: datetime | None = None) -
             "groups": [{"name": name, "cost_exact": str(amount)}
                        for name, amount in sorted(groups.items())],
             "unallocated_cost_exact": str(groups.get("Unallocated", Decimal("0"))),
-            "cost_scope": "tagged_account_month_to_date",
+            "cost_scope": "single_linked_account_month_to_date",
         }
     return {"period_start": start, "period_end_exclusive": end,
             "allocation": output, "source": "aws_cost_explorer",
@@ -281,7 +285,7 @@ def assess_aws_finops(account: dict, *, external_id: str = "") -> dict:
     credentials, identity_mode = resolve_aws_session(
         account, external_id=external_id, session_name="FinovauntFinOpsReadOnly")
     collectors = {
-        "cost_allocation": lambda: collect_cost_allocation(credentials),
+        "cost_allocation": lambda: collect_cost_allocation(credentials, account_id=str(account["account_id"])),
         "rightsizing": lambda: collect_rightsizing(account, credentials),
         "s3": lambda: collect_s3(account, credentials),
         "eks": lambda: collect_eks(account, credentials),
