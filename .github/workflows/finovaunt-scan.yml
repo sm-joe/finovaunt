@@ -2,15 +2,6 @@ name: Finovaunt RO Cost Scan
 
 on:
   workflow_dispatch:
-    inputs:
-      discovery_mode:
-        description: Data source for this scan
-        type: choice
-        required: true
-        default: aws
-        options:
-          - aws
-          - mock
   schedule:
     - cron: "30 3 * * *"
 
@@ -29,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      FINOPS_DISCOVERY_MODE: ${{ github.event.inputs.discovery_mode || 'aws' }}
+      FINOPS_DISCOVERY_MODE: aws
       FINOPS_AWS_REGION: eu-central-1
       FINOPS_AWS_LOOKBACK_DAYS: "14"
       FINOPS_AWS_MAX_RESOURCES: "100"
@@ -91,7 +82,6 @@ jobs:
           fi
 
       - name: Configure AWS Credentials through GitHub OIDC
-        if: ${{ (github.event.inputs.discovery_mode || 'aws') == 'aws' }}
         uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.FINOPS_AWS_ROLE_ARN }}
@@ -99,7 +89,6 @@ jobs:
           role-session-name: FinovauntReadOnlyScan
 
       - name: Verify AWS Identity
-        if: ${{ (github.event.inputs.discovery_mode || 'aws') == 'aws' }}
         run: aws sts get-caller-identity
 
       - name: Run Read-Only Scan

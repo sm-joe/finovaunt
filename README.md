@@ -4,7 +4,7 @@
 
 Finovaunt connects AWS cost evidence and cloud inventory with a read-only optimization workflow. It helps operators understand cloud spend, review EC2/RDS/EBS assets, inspect evidence-backed optimization opportunities, and record human decisions without granting Finovaunt cloud-write permissions.
 
-> **Release status:** Active production-hardening development. The historical functional milestone is not a certified production-ready stable v1.0.0. The automated security and Docker-image publishing jobs are temporarily disabled during the product-improvement phase; backend tests, frontend builds and Compose configuration checks remain enabled. Reinstate the security/image release gates before publishing v1.0.0.
+> **Release status:** Active production-hardening development. The historical functional milestone is not a certified production-ready stable v1.0.0. Security and actual API/dashboard Docker image build checks are restored and required on pull requests and main. Registry publication and stable v1.0.0 remain gated on runtime acceptance, operations review and release evidence.
 
 ## What Finovaunt does
 
@@ -14,8 +14,8 @@ Finovaunt connects AWS cost evidence and cloud inventory with a read-only optimi
 | AWS onboarding | Read-only cross-account IAM role registration | Finovaunt does not create AWS roles or store long-lived AWS keys in the browser |
 | Billing | Cost Explorer month-to-date service spend, pagination, exact decimal evidence, historical saved scans | Provisional account/service spend is not verified resource-level recurring cost |
 | Asset inventory | Account-scoped EC2, RDS and EBS discovery with actual EBS type, size, IOPS, throughput, tags and attachment evidence | Region-scoped and read-only |
-| EBS optimization | AWS Price List gp2/gp3 storage-only monthly scenario; optional EKS Kubernetes PV correlation; risk, confidence and explicit evidence | Potential reduction is not realized savings; unknown PV/price evidence never authorizes deletion |\n| Optimization engine | Conservative utilization collection, risk assessment, cost-evidence guardrails and Terraform proposal artifacts | Missing memory, seasonality or cost evidence blocks unsupported savings estimates |
-| Dashboard | Overview, opportunities, assets, scan history, account management and billing | Dashboard scan artifacts and on-demand account inventory are separate data sources today |
+| EBS optimization | AWS Price List gp2/gp3 storage-only scenario, optional EKS PV correlation, current and historical evidence ledger | Missing prices/PV visibility block unverified estimates, and resources are never deleted |\n| Optimization engine | Conservative utilization collection, risk assessment, cost-evidence guardrails and Terraform proposal artifacts | Missing memory, seasonality or cost evidence blocks unsupported savings estimates |
+| Dashboard | Live AWS spend/service breakdown, current inventory, EBS review evidence and historical optimization ledger | Live dashboard does not depend on GitHub scan-artifact snapshots |
 | Human review | Audit-only EBS candidate review tied to current inventory scan, with note, reviewer and timestamp | **Approval never deletes volumes or executes AWS/Kubernetes changes** |
 | Automation | GitHub Actions read-only AWS scan with OIDC and artifact synchronization | Scheduled workflow uses its configured role/region, not automatic fanout to every onboarded account |
 | Deployment | Docker Compose API + React dashboard; Python CLI and scan workflow | Local-first, no claim of independently certified multi-user production readiness |
@@ -88,10 +88,10 @@ uv run pytest
 uv run python -m src.app
 ```
 
-The default `FINOPS_DISCOVERY_MODE=mock` is a simulation. To collect real AWS data, choose `FINOPS_DISCOVERY_MODE=aws` and configure AWS credentials and a region. The noninteractive read-only scan can be run with:
+The interactive legacy CLI retains a `mock` **test-only simulation mode**, which is not connected to the live AWS dashboard. Scheduled and manually dispatched GitHub scans now require actual AWS OIDC credentials and never deliberately emit mock evidence. To run a real read-only scan locally:
 
 ```bash
-FINOPS_DISCOVERY_MODE=mock FINOPS_OUTPUT_DIR=artifacts-live \
+FINOPS_DISCOVERY_MODE=aws FINOPS_OUTPUT_DIR=artifacts-live \
   uv run python scripts/run_readonly_scan.py
 ```
 
@@ -116,7 +116,7 @@ The interactive CLI requires explicit approval before writing proposal artifacts
 | `FINOVAUNT_SECURE_COOKIES` | Set to `true` when running behind HTTPS |
 | `FINOVAUNT_GITHUB_TOKEN` | Optional token for syncing read-only GitHub scan artifacts |
 | `FINOPS_OUTPUT_DIR` | Safe output directory directly under the repository root |
-| `FINOPS_DISCOVERY_MODE` | `mock` (default) or `aws` |
+| `FINOPS_DISCOVERY_MODE` | Use `aws` for real scheduled/CLI scans; `mock` is available only for offline development/test workflows |
 | `FINOPS_AWS_REGION` | AWS region for the legacy scheduled/CLI scan workflow |
 | `FINOPS_AWS_LOOKBACK_DAYS` | CloudWatch lookback window |
 | `FINOPS_REQUIRE_TFLINT` | Fail HCL validation without TFLint when enabled |
@@ -155,7 +155,7 @@ cd ..
 docker compose config --quiet
 ```
 
-Automated backend/frontend/Compose CI runs on PRs and pushes. Security scanning and Docker image builds are temporarily deferred at the user's direction. **The final release audit must restore and pass those checks before a stable release.** Read [CI/CD](docs/CI_CD.md) and [Release Readiness](RELEASE_READINESS.md).
+Automated backend/frontend/Compose CI, security scans, and real API/dashboard Docker image builds run on PRs and pushes. A clean-start Compose API/frontend HTTP smoke test is also a release gate. **A stable release still requires verified upgrade/rollback, real AWS acceptance, supported artifact publication and release evidence.** Read [CI/CD](docs/CI_CD.md) and [Release Readiness](RELEASE_READINESS.md).
 
 ## Documentation
 
