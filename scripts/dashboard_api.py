@@ -324,6 +324,32 @@ class DashboardHandler(BaseHTTPRequestHandler):
             else:
                 self._json(200, {"authorized": True})
             return
+        if route == "/api/aws-credential-status":
+            current = access_control.session(self._cookie_token())
+            if not current or current.get("must_change_password"):
+                self._json(401, {"error": "unauthorized", "message": "Sign in and rotate the initial password."})
+                return
+            account_id = parse_qs(urlparse(self.path).query).get("account_id", [""])[0]
+            if not re.fullmatch(r"[0-9]{12}", account_id):
+                self._json(400, {"error": "invalid_account", "message": "Select an onboarded account."})
+                return
+            account = access_control.get_account(account_id)
+            if account is None:
+                self._json(404, {"error": "account_not_found", "message": "AWS account not onboarded."})
+                return
+            try:
+                from src.tools.aws_identity import inspect_source_identity
+                self._json(200, inspect_source_identity(account))
+            except Exception as exc:
+                from src.tools.aws_errors import AWSAccessError
+                if isinstance(exc, AWSAccessError):
+                    self._json(502, exc.public_payload())
+                else:
+                    self._json(502, {
+                        "error": "aws_identity_unavailable",
+                        "message": "Could not inspect AWS source credentials. Check API logs and credential configuration.",
+                    })
+            return
         if route == "/api/live-dashboard":
             current = access_control.session(self._cookie_token())
             if not current:

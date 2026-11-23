@@ -78,6 +78,12 @@ Do not commit these credentials to a file or share them in logs. Environment var
 
 **Correct absence semantics:** No onboarded accounts → onboarding prompt; no completed billing collection → no amount; successful empty AWS response → zero observed resources or charges as returned; failed or permission-denied collection → descriptive error with no fabricated totals. Cost Explorer reports account/service totals only, not resource-level spend. An unattached EBS volume is a review candidate, not a verified saving. Data is persisted from AWS responses and is not a continuously streaming connection; use **Collect Live AWS Data** to capture a new snapshot.
 
+## In-dashboard AWS credential diagnostics
+
+After signing in, select the onboarded AWS account and click **Check AWS Credentials**. The authenticated `GET /api/aws-credential-status?account_id=...` endpoint performs only `sts:GetCallerIdentity` from the API container. It does not call `sts:AssumeRole` or scan resources and never returns AWS access keys, session tokens or secret keys.
+
+A matching role is shown as **Direct collector role ready**. For a local `demo-user` profile, the status identifies the current source principal and states that `sts:AssumeRole` is required but **not yet verified**. Missing credentials and expired tokens return safe stage/code diagnostics instead of silently showing no inventory. Follow this with **Collect Live AWS Data** to verify target-role access and read permissions.
+
 ## Diagnose AWS Billing 502 Errors
 
 Billing errors now identify the failed stage and safe AWS error code, without exposing AWS SDK response details.

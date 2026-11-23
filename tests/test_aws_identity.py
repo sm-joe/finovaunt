@@ -90,3 +90,21 @@ def test_role_in_wrong_account_is_rejected_even_for_direct_mode(monkeypatch):
     with pytest.raises(AWSAccessError) as error:
         resolve_aws_session({**ACCOUNT, "role_arn": "arn:aws:iam::000000000000:role/Finovaunt-RO-Scan-Role"})
     assert error.value.code == "InvalidRoleConfiguration"
+
+
+def test_source_identity_status_direct_vs_cross_role(monkeypatch):
+    from src.tools.aws_identity import inspect_source_identity
+    source = STS("arn:aws:sts::638631156706:assumed-role/Finovaunt-RO-Scan-Role/session")
+    monkeypatch.setitem(sys.modules, "boto3", types.SimpleNamespace(client=lambda name, **kwargs: source))
+    result = inspect_source_identity(ACCOUNT)
+    assert result["status"] == "direct_role_ready"
+    assert result["assume_role_required"] is False
+    assert result["role_assumption_verified"] is False
+    assert "FAKE" not in str(result)
+    assert source.calls == []
+    another = STS("arn:aws:iam::638631156706:user/demo-user")
+    monkeypatch.setitem(sys.modules, "boto3", types.SimpleNamespace(client=lambda name, **kwargs: another))
+    result = inspect_source_identity(ACCOUNT)
+    assert result["status"] == "assume_role_required"
+    assert result["role_assumption_verified"] is False
+    assert another.calls == []

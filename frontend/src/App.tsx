@@ -9,6 +9,7 @@ type Inventory = { id: string; scanned_at: string; status: string; region: strin
 type History = { id: string; scanned_at: string; period_start: string; total_cost: number; currency: string; status: string };
 type Candidate = { resource_id: string; name: string; type: string; region: string; reason: string; estimated_monthly_savings: string | null; possible_monthly_storage_reduction_usd?: string | null; verified_savings: null; confidence: string; risk: string; action: string; inventory_scan_id: string; pricing?: {source: string; usd_per_gb_month: string; unit: string; volume_type: string} | null; kubernetes?: {status: string; discovery_status?: string; pv_references?: {cluster:string;pv:string;pvc?:string;namespace?:string;reclaim_policy?:string}[]; tags?: Record<string,string>}; evidence?: string[]; assumptions?: string[]; can_auto_delete: false };
 type HistoricEbs = { account_id: string; region: string; resource_id: string; name: string; first_seen_at: string; last_seen_at: string; lifecycle: string; observations: number; latest_evidence?: {size_gib?: number; volume_type?: string; potential_storage_reduction_usd?: string | null; estimated_savings_usd?: string | null}; savings_verified_usd: null };
+type AwsSourceStatus = { status: "direct_role_ready" | "assume_role_required"; source_account_id: string; source_principal_arn: string; target_role_arn: string; note: string; checked_at: string; role_assumption_verified: boolean };
 type Review = { id: string; inventory_scan_id: string; resource_id: string; decision: string; note: string; reviewed_by: string; reviewed_at: string; infrastructure_applied: false };
 type Dashboard = { source: "aws_collected"; account: Account; billing: Billing | null; inventory: Inventory | null; billing_history: History[]; review_candidates: Candidate[]; ebs_reviews: Review[]; optimization_history: HistoricEbs[]; potential_ebs_savings_usd?: string | null; ebs_price_coverage?: {priced_candidates:number; total_candidates:number}; estimated_savings: null; realized_savings: null; billing_status: string; inventory_status: string };
 type Tab = "Overview" | "Assets" | "Cost Breakdown" | "Review Candidates" | "Scan History";
@@ -49,6 +50,9 @@ export default function App({ onOpenCloud }: { onOpenCloud: () => void }) {
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState("");
   const [scanErrors, setScanErrors] = useState<string[]>([]);
+  const [sourceStatus, setSourceStatus] = useState<AwsSourceStatus | null>(null);
+  const [sourceError, setSourceError] = useState("");
+  const [checkingSource, setCheckingSource] = useState(false);
   const [externalId, setExternalId] = useState("");
   const [reviewResource, setReviewResource] = useState("");
   const [reviewNote, setReviewNote] = useState("");
@@ -79,6 +83,17 @@ export default function App({ onOpenCloud }: { onOpenCloud: () => void }) {
 
   useEffect(() => { void loadAccounts(); }, [loadAccounts]);
   useEffect(() => { void loadDashboard(accountId); }, [accountId, loadDashboard]);
+
+  async function checkSource() {
+    if (!accountId || checkingSource) return;
+    setCheckingSource(true); setSourceError(""); setSourceStatus(null);
+    try {
+      const status = await request<AwsSourceStatus>("/api/aws-credential-status?account_id=" + encodeURIComponent(accountId));
+      setSourceStatus(status);
+    } catch (err) {
+      setSourceError(err instanceof Error ? err.message : "AWS source credentials are unavailable.");
+    } finally { setCheckingSource(false); }
+  }
 
   async function collectAWS() {
     if (!accountId || scanning) return;
@@ -131,11 +146,14 @@ export default function App({ onOpenCloud }: { onOpenCloud: () => void }) {
         <section className="panel" style={{marginBottom: 18}}>
           {accounts.length === 0 ? <><h2>Connect Your First AWS Account</h2><p>Onboard a read-only IAM role, then collect actual billing and inventory evidence. No mock data is loaded.</p><button className="primary-button" onClick={onOpenCloud}><ArrowUpRight size={16}/> Onboard AWS Account</button></> :
           <div style={{display: "flex",gap: 16,alignItems: "end",flexWrap: "wrap"}}>
-            <label style={{flex: "1 1 260px"}}>Onboarded AWS Account<select value={accountId} onChange={e => {setAccountId(e.target.value);setScanErrors([]);setExternalId("");}}>{accounts.map(a => <option key={a.account_id} value={a.account_id}>{a.name} · {a.account_id} · {a.region}</option>)}</select></label>
+            <label style={{flex: "1 1 260px"}}>Onboarded AWS Account<select value={accountId} onChange={e => {setAccountId(e.target.value);setScanErrors([]);setExternalId("");setSourceStatus(null);setSourceError("");}}>{accounts.map(a => <option key={a.account_id} value={a.account_id}>{a.name} · {a.account_id} · {a.region}</option>)}</select></label>
             <label style={{flex: "1 1 220px"}}>IAM External ID (only if role requires it)<input type="password" autoComplete="off" value={externalId} onChange={e => setExternalId(e.target.value)} placeholder="Not saved"/></label>
+            <button type="button" onClick={() => void checkSource()} disabled={checkingSource || !accountId}>{checkingSource ? "Checking…" : "Check AWS Credentials"}</button>
             <button className="primary-button" onClick={() => void collectAWS()} disabled={scanning || !accountId}><RefreshCw size={16}/>{scanning ? "Collecting from AWS…" : "Collect Live AWS Data"}</button>
           </div>}
         </section>
+        {sourceStatus && <section className="panel" style={{marginBottom: 16}} aria-live="polite"><strong>AWS Source Identity</strong><p>{sourceStatus.status === "direct_role_ready" ? "Direct collector role ready" : "Source credentials found; target role assumption still needs verification"} · {sourceStatus.source_account_id}</p><small>{sourceStatus.source_principal_arn}</small><p>{sourceStatus.note}</p></section>}
+        {sourceError && <div className="error-banner" role="alert"><AlertCircle size={18}/><div><strong>AWS Credentials Unavailable</strong><span>{sourceError}</span></div></div>}
         {error && <div className="error-banner" role="alert"><AlertCircle size={18}/><div><strong>Unable to Load Account Data</strong><span>{error}</span></div></div>}
         {scanErrors.map(message => <div key={message} className="error-banner" role="alert"><AlertCircle size={18}/><div><strong>AWS Collection Failed</strong><span>{message}</span><small>Verify the source AWS credential chain, sts:AssumeRole trust, External ID, and read-only permissions.</small></div></div>)}
         {loading && <p role="status">Loading persisted AWS evidence…</p>}
