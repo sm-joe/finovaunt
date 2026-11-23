@@ -99,6 +99,7 @@ def test_recommendation_decisions_are_auditable_and_never_apply_infrastructure(t
 def test_collector_configuration_update_preserves_history_and_requires_fresh_evidence(tmp_path, monkeypatch):
     from scripts import access_control
     from src.utils.live_dashboard import account_dashboard
+    import pytest
     monkeypatch.setenv("FINOVAUNT_BOOTSTRAP_PASSWORD", "initial-test-password-2026")
     monkeypatch.setenv("FINOVAUNT_CONTROL_FILE", str(tmp_path / "control-plane.json"))
     account = access_control.add_account(
@@ -111,7 +112,7 @@ def test_collector_configuration_update_preserves_history_and_requires_fresh_evi
     scan = access_control.save_inventory_scan(account["account_id"], {
         "scanned_at": "2026-11-23", "region": "us-east-1",
         "status": "success", "truncated": False,
-        "assets": [{"id": "vol-abc", "type": "ebs", "name": "legacy", "state": "available"}],
+        "assets": [{"id": "vol-abc", "type": "ebs", "name": "legacy", "state": "available", "region": "us-east-1"}],
     })
     assert account_dashboard(account["account_id"])["billing"]["total_cost"] == 12.2
     assert len(account_dashboard(account["account_id"])["review_candidates"]) == 1
@@ -141,6 +142,7 @@ def test_collector_configuration_update_preserves_history_and_requires_fresh_evi
 
 def test_collector_configuration_rejects_cross_account_roles(tmp_path, monkeypatch):
     from scripts import access_control
+    import pytest
     monkeypatch.setenv("FINOVAUNT_BOOTSTRAP_PASSWORD", "initial-test-password-2026")
     monkeypatch.setenv("FINOVAUNT_CONTROL_FILE", str(tmp_path / "control-plane.json"))
     access_control.add_account(
