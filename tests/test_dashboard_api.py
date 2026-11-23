@@ -300,3 +300,47 @@ def test_json_connection_reset_is_handled_without_retrying_response():
     handler._json(200, {"status": "success"})
     assert handler.close_connection is True
     assert handler.send_response.call_count == 1
+
+
+def test_ebs_reviews_require_current_inventory_and_never_change_aws(tmp_path, monkeypatch):
+    from scripts import access_control
+    import pytest
+    monkeypatch.setenv("FINOVAUNT_BOOTSTRAP_PASSWORD", "initial-test-password-2026")
+    monkeypatch.setenv("FINOVAUNT_CONTROL_FILE", str(tmp_path / "control-plane.json"))
+    account_id = "123456789012"
+    access_control.add_account(
+        "AWS", "aws", account_id,
+        "arn:aws:iam::123456789012:role/FinovauntReadOnly", "us-east-1",
+    )
+    scan = access_control.save_inventory_scan(account_id, {
+        "scanned_at": "2026-11-23T10:00:00+00:00",
+        "status": "success",
+        "assets": [
+            {"id":"vol-0c3f82dcff34589ab","type":"ebs","state":"available"},
+            {"id":"vol-0123456789abcdef0","type":"ebs","state":"in-use"},
+        ],
+    })
+    with pytest.raises(ValueError, match="stale"):
+        access_control.record_ebs_review(
+            account_id=account_id, inventory_scan_id="older-scan",
+            resource_id="vol-0c3f82dcff34589ab",
+            decision="approved_for_manual_review", note="Review retention state", reviewed_by="admin",
+        )
+    with pytest.raises(ValueError, match="absent"):
+        access_control.record_ebs_review(
+            account_id=account_id, inventory_scan_id=scan["id"],
+            resource_id="vol-0123456789abcdef0",
+            decision="approved_for_manual_review", note="Review retention state", reviewed_by="admin",
+        )
+    review = access_control.record_ebs_review(
+        account_id=account_id, inventory_scan_id=scan["id"],
+        resource_id="vol-0c3f82dcff34589ab",
+        decision="approved_for_manual_review",
+        note="Must verify PV claim, snapshots and business retention before any external action.",
+        reviewed_by="admin",
+    )
+    assert review["infrastructure_applied"] is False
+    assert review["savings_verified"] is False
+    assert access_control.ebs_reviews(account_id)[0]["id"] == review["id"]
+    access_control.delete_account(account_id)
+    assert access_control.ebs_reviews(account_id) == []
