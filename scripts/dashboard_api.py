@@ -92,7 +92,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         route = urlparse(self.path).path.rstrip("/") or "/"
-        if route not in ("/api/auth/login", "/api/auth/logout", "/api/auth/password", "/api/cloud-accounts", "/api/billing-scans", "/api/inventory-scans", "/api/recommendation-decisions", "/api/ebs-reviews") and not re.fullmatch(r"/api/cloud-accounts/[0-9]{12}/configuration", route):
+        if route not in ("/api/auth/login", "/api/auth/logout", "/api/auth/password", "/api/cloud-accounts", "/api/billing-scans", "/api/inventory-scans", "/api/recommendation-decisions", "/api/ebs-reviews", "/api/finops-assessments") and not re.fullmatch(r"/api/cloud-accounts/[0-9]{12}/configuration", route):
             self._json(405, {"error": "method_not_allowed", "message": "This API endpoint does not accept POST requests."})
             return
         try:
@@ -212,6 +212,28 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     })
                 return
             self._json(200, result)
+            return
+        if route == "/api/finops-assessments":
+            account_id = str(body.get("account_id", ""))
+            account = access_control.get_account(account_id)
+            if not account:
+                self._json(404, {"error": "account_not_found", "message": "Onboard the AWS account first."})
+                return
+            try:
+                from src.tools.finops_core import assess_aws_finops
+                evidence = assess_aws_finops(account, external_id=str(body.get("external_id", "")))
+                result = access_control.save_finops_assessment(
+                    account_id, evidence, expected_revision=int(account.get("config_revision", 1)))
+                self._json(200, result)
+            except Exception as exc:
+                from src.tools.aws_errors import AWSAccessError
+                if isinstance(exc, AWSAccessError):
+                    self._json(502, exc.public_payload())
+                elif isinstance(exc, ValueError) and "configuration changed" in str(exc):
+                    self._json(409, {"error": "stale_collection", "message": "Collector configuration changed; collect fresh evidence."})
+                else:
+                    self._json(502, {"error": "finops_collection_failed",
+                                     "message": "Read-only AWS FinOps assessment could not finish. Verify AWS permissions and API logs."})
             return
         if route == "/api/ebs-reviews":
             try:
@@ -349,6 +371,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         "error": "aws_identity_unavailable",
                         "message": "Could not inspect AWS source credentials. Check API logs and credential configuration.",
                     })
+            return
+        if route == "/api/finops-assessments":
+            current = access_control.session(self._cookie_token())
+            if not current or current.get("must_change_password"):
+                self._json(401, {"error": "unauthorized", "message": "Sign in and change the initial password."})
+                return
+            account_id = parse_qs(urlparse(self.path).query).get("account_id", [""])[0]
+            if not re.fullmatch(r"[0-9]{12}", account_id):
+                self._json(400, {"error": "invalid_account", "message": "Select an onboarded AWS account."})
+                return
+            if access_control.get_account(account_id) is None:
+                self._json(404, {"error": "account_not_found", "message": "AWS account not onboarded."})
+                return
+            self._json(200, {"latest": access_control.latest_finops_assessment(account_id)})
             return
         if route == "/api/live-dashboard":
             current = access_control.session(self._cookie_token())
