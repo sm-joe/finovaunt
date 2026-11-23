@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Activity, AlertCircle, ArrowUpRight, BarChart3, Bell, Boxes, Cloud, CircleDollarSign, Database, HardDrive, Home, Layers3, LogOut, PackageSearch, RefreshCw, Search, Settings2, ShieldCheck, Target, UserRound, Wallet, Zap } from "lucide-react";
 import FinovauntOverview from "./FinovauntOverview";
+import "./finovaunt-enterprise.css";
 import FinopsEvidence, { type FinOpsAssessment } from "./FinopsEvidence";
 
 type Account = { id: string; account_id: string; name: string; provider: string; role_arn: string; region: string; status: string };
