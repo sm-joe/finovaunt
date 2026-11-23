@@ -67,6 +67,24 @@ def load_artifacts(artifact_dir: Path) -> dict[str, Any]:
     """Load the latest scan files. Evidence is required; other files are optional."""
     if not artifact_dir.exists() or not artifact_dir.is_dir():
         raise DashboardDataError("No scan artifact directory is available yet.")
+    status_path = artifact_dir / "scan_status.json"
+    if status_path.is_file():
+        status = _read_json(status_path, required=True)
+        if status.get("status") != "empty_inventory" or not status.get("run_id"):
+            raise DashboardDataError("Scan status has an unsupported format.")
+        # Empty inventory is a successful observation, not an empty cost
+        # estimate. Keep the run visible without reusing older proposals.
+        return {
+            "evidence": {
+                "run_id": status["run_id"],
+                "generated_at": status.get("scanned_at"),
+                "resources": [],
+                "scan_provenance": {"status": "empty_inventory", "warnings": status.get("warnings", [])},
+            },
+            "proposal": {},
+            "billing": {},
+            "history": {},
+        }
     return {
         "evidence": _read_json(artifact_dir / "cost_evidence.json", required=True),
         "proposal": _read_json(artifact_dir / "proposal.json"),

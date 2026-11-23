@@ -96,6 +96,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if not isinstance(body, dict): raise ValueError("Request body must be a JSON object.")
         except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
             self._json(400, {"error":"invalid_json","message":"Provide a valid JSON object."}); return
+        # Cookie-authenticated mutations must not be accepted cross-origin.
+        # Non-browser clients without an Origin still need an authenticated session.
+        origin = self.headers.get("Origin")
+        if origin and origin not in _ALLOWED_ORIGINS:
+            self._json(403, {"error": "invalid_origin", "message": "Untrusted request origin."})
+            return
+        site = self.headers.get("Sec-Fetch-Site", "").lower()
+        if site in {"cross-site", "same-site"} and not origin:
+            self._json(403, {"error": "invalid_origin", "message": "Cross-origin changes are blocked."})
+            return
         if route == "/api/auth/login":
             result = access_control.login(str(body.get("username", "")), str(body.get("password", "")))
             if not result: self._json(401, {"error":"invalid_credentials","message":"Username or password is incorrect."}); return
@@ -158,7 +168,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         encoded = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status); self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(encoded))); self.send_header("Cache-Control", "no-store")
-        self.send_header("Set-Cookie", f"finovaunt_session={'' if clear else token or ''}; HttpOnly; SameSite=Strict; Path=/; Max-Age={0 if clear else 43200}")
+        self.send_header("Set-Cookie", f"finovaunt_session={'' if clear else token or ''}; HttpOnly; SameSite=Strict; Path=/${'; Secure' if os.getenv('FINOVAUNT_SECURE_COOKIES', 'false').lower() == 'true' else ''}; Max-Age={0 if clear else 43200}")
         self.end_headers(); self.wfile.write(encoded)
 
     def do_PUT(self) -> None:
@@ -194,6 +204,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if current.get("must_change_password"): self._json(403, {"error":"password_change_required","message":"Change the default password before continuing."}); return
             account_id = route.removeprefix("/api/billing-scans/")
             self._json(200, {"items":access_control.billing_history(account_id)}); return
+        # Scan artifacts contain cloud inventory and billing metadata. Never serve
+        # them to an unauthenticated browser, even though AWS access is read-only.
+        current = access_control.session(self._cookie_token())
+        if not current:
+            self._json(401, {"error": "unauthorized", "message": "Please log in."})
+            return
+        if current.get("must_change_password"):
+            self._json(403, {"error": "password_change_required", "message": "Change your password before continuing."})
+            return
         if route == "/api/sync-status":
             with _SYNC_LOCK:
                 self._json(200, dict(_SYNC_STATUS))

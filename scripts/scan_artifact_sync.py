@@ -20,6 +20,7 @@ ALLOWED_FILES = {
     "cost_evidence.json",
     "cost_history.json",
     "proposal.json",
+    "scan_status.json",
 }
 USER_AGENT = "Finovaunt-ReadOnly-Dashboard-Sync/1.0"
 
@@ -79,6 +80,22 @@ def _validated_files(archive: bytes) -> dict[str, bytes]:
             if info.filename in ALLOWED_FILES:
                 files[info.filename] = zf.read(info.filename)
 
+    if "scan_status.json" in files and "manifest.json" not in files:
+        try:
+            status = json.loads(files["scan_status.json"].decode("utf-8"))
+        except (ValueError, UnicodeDecodeError) as exc:
+            raise SyncError("Empty-inventory status artifact is invalid JSON.") from exc
+        if (
+            not isinstance(status, dict)
+            or status.get("schema_version") != 1
+            or status.get("status") != "empty_inventory"
+            or not isinstance(status.get("run_id"), str)
+            or not status["run_id"]
+            or status.get("recommendations") != 0
+            or status.get("estimated_monthly_savings_usd") != 0
+        ):
+            raise SyncError("Empty-inventory status artifact has an unsupported structure.")
+        return {"scan_status.json": files["scan_status.json"]}
     if "manifest.json" not in files or "cost_evidence.json" not in files:
         raise SyncError("Scan artifact is missing manifest.json or cost_evidence.json.")
     try:
@@ -135,7 +152,15 @@ def sync_latest_scan(output_dir: Path, *, token: str, repository: str, workflow:
                         and bool(evidence.get("run_id"))
                         and evidence.get("run_id") == old.get("scan_run_id")
                     )
-                if old.get("github_run_id") == run_id and evidence_is_present:
+                status_is_present = False
+                status_path = output_dir / "scan_status.json"
+                if status_path.is_file():
+                    status_item = json.loads(status_path.read_text(encoding="utf-8"))
+                    status_is_present = (
+                        status_item.get("status") == "empty_inventory"
+                        and status_item.get("run_id") == old.get("scan_run_id")
+                    )
+                if old.get("github_run_id") == run_id and (evidence_is_present or status_is_present):
                     return {
                         "status": "unchanged",
                         "github_run_id": run_id,
@@ -156,6 +181,31 @@ def sync_latest_scan(output_dir: Path, *, token: str, repository: str, workflow:
         archive = _request(f"{base}/actions/artifacts/{artifact['id']}/zip", token, accept="application/vnd.github+json")
         files = _validated_files(archive)
         output_dir.mkdir(parents=True, exist_ok=True)
+        if "scan_status.json" in files:
+            status = json.loads(files["scan_status.json"].decode("utf-8"))
+            fd, temp_name = tempfile.mkstemp(prefix=".finovaunt-", suffix=".tmp", dir=output_dir)
+            try:
+                with os.fdopen(fd, "wb") as handle:
+                    handle.write(files["scan_status.json"])
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(temp_name, output_dir / "scan_status.json")
+            finally:
+                if os.path.exists(temp_name):
+                    os.unlink(temp_name)
+            # Never present older recommendations as the current scan result.
+            for old_name in ALLOWED_FILES - {"scan_status.json"}:
+                (output_dir / old_name).unlink(missing_ok=True)
+            marker_data = {
+                "github_run_id": run_id,
+                "github_run_url": run.get("html_url"),
+                "scan_run_id": status["run_id"],
+                "synced_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+            marker.write_text(json.dumps(marker_data, indent=2) + "\n", encoding="utf-8")
+            return {"status": "synced", "scan_status": "empty_inventory", **marker_data}
+
+        (output_dir / "scan_status.json").unlink(missing_ok=True)
 
         # Replace data files atomically, with cost_evidence.json written last as the snapshot marker.
         ordered = sorted((name for name in files if name != "cost_evidence.json"))

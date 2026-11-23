@@ -2,7 +2,7 @@
 
 ## First login
 
-On a fresh persistent control-plane data directory, Finovaunt initializes `admin` / `admin`. The first authenticated session is restricted to the password-change screen until the password is changed. New passwords must be at least 12 characters. Passwords are stored as PBKDF2-HMAC-SHA256 hashes, not plaintext. The session is an HttpOnly, SameSite=Strict cookie and currently lives in server memory; restarting the API logs sessions out.
+On a fresh persistent control-plane data directory, set `FINOVAUNT_BOOTSTRAP_PASSWORD` to a unique value of at least 12 characters before startup. Finovaunt creates the `admin` account with this value; it refuses to initialize without it. The first authenticated session is restricted to the password-change screen until the password is changed. New passwords must be at least 12 characters. Passwords are stored as PBKDF2-HMAC-SHA256 hashes, not plaintext. The session uses an HttpOnly, SameSite=Strict cookie and is stored in server memory with a 12-hour server-side expiration. Credential changes revoke all active sessions. Enable `FINOVAUNT_SECURE_COOKIES=true` when deploying behind HTTPS; never expose the API publicly over plaintext HTTP.
 
 The control-plane state is stored at `data/control-plane.json` by default. Docker Compose mounts `./data` to `/app/data` so the password and onboarded account registry persist across container recreation. Back up this file securely; it contains authentication hashes and cloud account metadata. Do not commit it.
 
@@ -15,3 +15,7 @@ The API runtime must itself have AWS source credentials (prefer an IAM role for 
 ## Runtime storage
 
 The API container runs read-only except for mounted artifact and control-plane data directories. Preserve both mounts when deploying. The login and onboarding layer wraps the existing dashboard; `frontend/src/App.tsx` and `frontend/src/styles.css` remain unchanged.
+
+## Production requirements
+
+Protect access through HTTPS, set secure cookies, and use a unique bootstrap secret. Cloud inventory and billing endpoints require a valid session. State-changing requests with untrusted Origin headers are rejected. Existing installations keep their stored password hash; the bootstrap password only applies to first initialization.
