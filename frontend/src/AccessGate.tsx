@@ -133,6 +133,6 @@ export default function AccessGate() {
       <button type="button" onClick={() => setEditing(null)}>Cancel</button>
     </form>}
     {latestScan && <section className="access-account-panel"><h2>Billing scan result</h2><p>{latestScan.period_start} to {latestScan.period_end_exclusive} · {new Date(latestScan.scanned_at).toLocaleString()}</p><div className="access-total">{new Intl.NumberFormat("en-US", { style: "currency", currency: latestScan.currency || "USD" }).format(latestScan.total_cost)} <small>month-to-date service costs</small></div><div className="access-services">{latestScan.services.map((service) => <div key={service.service}><span>{service.service}</span><strong>{new Intl.NumberFormat("en-US", { style: "currency", currency: service.currency || "USD" }).format(service.amount)}</strong></div>)}</div></section>}
-    <div className="access-dashboard"><div className="access-dashboard-heading"><strong>Cost intelligence dashboard</strong><span>Existing dashboard below is unchanged.</span></div><App onOpenCloud={() => setShowOnboarding(true)} /></div>
+    <div className="access-dashboard"><div className="access-dashboard-heading"><strong>Cost intelligence dashboard</strong><span>Existing dashboard below is unchanged.</span></div><App onOpenCloud={() => setShowOnboarding(true)} onOpenProfile={() => setShowOnboarding(true)} onSignOut={() => void logout()} username={session.username || "admin"} /></div>
   </div>;
 }
