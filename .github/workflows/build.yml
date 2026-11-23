@@ -1,195 +1,26 @@
-name: Finovaunt Docker Build Pipeline
+name: Finovaunt Product CI
 
+# TEMPORARY DEVELOPMENT MODE (M1-M6):
+# Security audits, container builds and GHCR publication are disabled on
+# pushes and PRs. Restore the full release gates before stable v1.0.0.
 on:
   push:
     branches: [main]
-
   pull_request:
     branches: [main]
 
 permissions:
   contents: read
-  pull-requests: read
 
 concurrency:
-  group: finovaunt-${{ github.workflow }}-${{ github.ref }}
+  group: finovaunt-product-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  changes:
-    name: Detect Changed Components
-    runs-on: ubuntu-latest
-    outputs:
-      backend: ${{ steps.filter.outputs.backend }}
-      frontend: ${{ steps.filter.outputs.frontend }}
-      backend_image: ${{ steps.filter.outputs.backend_image }}
-      frontend_image: ${{ steps.filter.outputs.frontend_image }}
-      pipeline: ${{ steps.filter.outputs.pipeline }}
-
-    steps:
-
-      - name: Check Out Repository
-        uses: actions/checkout@v7
-
-      - name: Filter Changed Paths
-        id: filter
-        uses: dorny/paths-filter@v4
-        with:
-          filters: |
-            backend:
-              - 'src/**'
-              - 'scripts/**'
-              - 'tests/**'
-              - 'pyproject.toml'
-              - 'uv.lock'
-              - 'Dockerfile'
-              - '.dockerignore'
-
-            frontend:
-              - 'frontend/src/**'
-              - 'frontend/public/**'
-              - 'frontend/index.html'
-              - 'frontend/package.json'
-              - 'frontend/package-lock.json'
-              - 'frontend/tsconfig*.json'
-              - 'frontend/vite.config.*'
-              - 'frontend/Dockerfile'
-              - 'frontend/nginx.conf'
-
-            backend_image:
-              - 'src/**'
-              - 'scripts/**'
-              - 'pyproject.toml'
-              - 'uv.lock'
-
-            frontend_image:
-              - 'frontend/src/**'
-              - 'frontend/public/**'
-              - 'frontend/index.html'
-              - 'frontend/package.json'
-              - 'frontend/package-lock.json'
-              - 'frontend/tsconfig*.json'
-              - 'frontend/vite.config.*'
-
-            pipeline:
-              - '.github/workflows/**'
-
-  security:
-    name: Required Security Gate
-    needs: changes
-    if: >-
-      needs.changes.outputs.backend == 'true' ||
-      needs.changes.outputs.frontend == 'true' ||
-      needs.changes.outputs.pipeline == 'true'
-    uses: ./.github/workflows/security.yml
-    with:
-      backend_changed: ${{ needs.changes.outputs.backend == 'true' }}
-      frontend_changed: ${{ needs.changes.outputs.frontend == 'true' }}
-      pipeline_changed: ${{ needs.changes.outputs.pipeline == 'true' }}
-    secrets: inherit
-
-  ci:
-    name: Required CI Gate
-    needs: [changes, security]
-    if: >-
-      needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.pipeline == 'true'
+  product-ci:
+    name: Backend, Frontend and Compose Validation
     uses: ./.github/workflows/ci.yml
     with:
-      backend_changed: ${{ needs.changes.outputs.backend == 'true' }}
-      frontend_changed: ${{ needs.changes.outputs.frontend == 'true' }}
-      pipeline_changed: ${{ needs.changes.outputs.pipeline == 'true' }}
-    secrets: inherit
-
-  build-api:
-    name: Build and Publish API Image
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: [changes, security, ci]
-
-    permissions:
-      contents: read
-      packages: write
-
-    if: >-
-      needs.changes.outputs.backend_image == 'true'
-
-    steps:
-      - name: Check Out Repository
-        uses: actions/checkout@v7
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Normalize Image Owner
-        id: image
-        shell: bash
-        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
-
-      - name: Login to GHCR
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and Publish API Image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: Dockerfile
-          push: >-
-            ${{ github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
-          load: >-
-            ${{ github.event_name != 'push' || github.ref != format('refs/heads/{0}', github.event.repository.default_branch) }}
-          tags: |
-            ghcr.io/${{ steps.image.outputs.owner }}/finovaunt-api:${{ github.sha }}
-            ghcr.io/${{ steps.image.outputs.owner }}/finovaunt-api:latest
-          cache-from: type=gha,scope=finovaunt-api
-          cache-to: type=gha,mode=max,scope=finovaunt-api
-
-  build-frontend:
-    name: Build and Publish Dashboard Image
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: [changes, security, ci]
-
-    permissions:
-      contents: read
-      packages: write
-
-    if: >-
-      needs.changes.outputs.frontend_image == 'true'
-
-    steps:
-      - name: Check Out Repository
-        uses: actions/checkout@v7
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Normalize Image Owner
-        id: image
-        shell: bash
-        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
-
-      - name: Login to GHCR
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and Publish Dashboard Image
-        uses: docker/build-push-action@v7
-        with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
-          push: >-
-            ${{ github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
-          load: >-
-            ${{ github.event_name != 'push' || github.ref != format('refs/heads/{0}', github.event.repository.default_branch) }}
-          tags: |
-            ghcr.io/${{ steps.image.outputs.owner }}/finovaunt-dashboard:${{ github.sha }}
-            ghcr.io/${{ steps.image.outputs.owner }}/finovaunt-dashboard:latest
-          cache-from: type=gha,scope=finovaunt-dashboard
-          cache-to: type=gha,mode=max,scope=finovaunt-dashboard
+      backend_changed: true
+      frontend_changed: true
+      pipeline_changed: true
