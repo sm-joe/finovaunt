@@ -102,8 +102,8 @@ jobs:
         run: |
           set -euo pipefail
           docker compose stop api frontend
-          python scripts/control_backup.py backup "$RUNNER_TEMP/finovaunt-state.tar.gz"
-          python scripts/control_backup.py verify "$RUNNER_TEMP/finovaunt-state.tar.gz"
+          sudo -n python scripts/control_backup.py backup "$RUNNER_TEMP/finovaunt-state.tar.gz"
+          sudo -n python scripts/control_backup.py verify "$RUNNER_TEMP/finovaunt-state.tar.gz"
 
       - name: Inspect Container Status on Failure
         if: failure()
