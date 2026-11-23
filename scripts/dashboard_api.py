@@ -224,7 +224,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         encoded = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status); self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(encoded))); self.send_header("Cache-Control", "no-store")
-        self.send_header("Set-Cookie", f"finovaunt_session={'' if clear else token or ''}; HttpOnly; SameSite=Strict; Path=/${'; Secure' if os.getenv('FINOVAUNT_SECURE_COOKIES', 'false').lower() == 'true' else ''}; Max-Age={0 if clear else 43200}")
+        self.send_header("Set-Cookie", f"finovaunt_session={'' if clear else token or ''}; HttpOnly; SameSite=Strict; Path=/{'; Secure' if os.getenv('FINOVAUNT_SECURE_COOKIES', 'false').lower() == 'true' else ''}; Max-Age={0 if clear else 43200}")
         self.end_headers(); self.wfile.write(encoded)
 
     def do_PUT(self) -> None:
