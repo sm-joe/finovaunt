@@ -84,11 +84,40 @@ def collect_inventory(account: dict, *, external_id: str = "", max_assets: int =
                 "state": str(volume.get("State", "unknown")),
                 "size": f"{volume.get('Size', 0)} GiB / {volume.get('VolumeType', 'unknown')}",
                 "region": region,
+                "size_gib": int(volume.get("Size", 0)),
+                "volume_type": str(volume.get("VolumeType", "unknown")),
+                "iops": volume.get("Iops"),
+                "throughput": volume.get("Throughput"),
+                "availability_zone": volume.get("AvailabilityZone"),
+                "encrypted": bool(volume.get("Encrypted", False)),
+                "created_at": volume.get("CreateTime").isoformat() if volume.get("CreateTime") else None,
+                "tags": tags,
+                "attachments": [
+                    {"instance_id": a.get("InstanceId"), "state": a.get("State")}
+                    for a in volume.get("Attachments", [])
+                ],
                 "cost_status": "not_attributed",
                 "recommendation": "review_only" if volume.get("State") == "available" else "not_assessed",
             })
 
+    optimization = {"pricing_status": "not_collected", "kubernetes_status": "not_verified"}
+    try:
+        from src.tools.ebs_optimization import enrich_ebs
+        session = boto3.Session(**session_kwargs)
+        optimization = enrich_ebs(assets, region=region, session=session)
+    except Exception:
+        # Pricing/EKS access must never invalidate a real inventory scan.
+        for asset in assets:
+            if asset.get("type") == "ebs":
+                asset["optimization_evidence"] = {
+                    "pricing": None, "kubernetes": {"status": "not_verified"},
+                    "estimated_monthly_savings_usd": None, "verified_savings_usd": None,
+                    "confidence": "blocked", "risk": "high", "can_auto_delete": False,
+                    "requires_human_approval": True,
+                    "evidence": ["AWS pricing or Kubernetes PV verification unavailable."],
+                }
     return {
+        "optimization_collection": optimization,
         "account_id": account_id,
         "region": region,
         "scanned_at": datetime.now(timezone.utc).isoformat(),
