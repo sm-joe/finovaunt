@@ -1,63 +1,44 @@
-# Autonomous FinOps Cost Optimization Agent — Release Readiness
+# Finovaunt v1.0.0 — Release Readiness
 
-**Status: NOT FROZEN — local validation evidence is pending.**
+**Release status: CODE FROZEN; PUBLICATION BLOCKED pending operator acceptance.**
 
-This checklist defines the evidence required before calling the current implementation frozen. A behavior is not marked verified merely because a test was authored or passed in a separate environment.
+This page describes the source and CI baseline for the first stable, self-hosted, single-administrator, AWS-only FinOps release. The authoritative evidence register and publication criteria are in [Release v1 Checklist](RELEASE_V1_CHECKLIST.md). Never interpret successful mocked tests or same-version restart checks as proof of live AWS compatibility or prior-version rollback.
 
-## Safety guarantees and required evidence
+## Verified on the release candidate main commit
 
-| Area | Intended guarantee | Evidence required before marking verified |
-|---|---|---|
-| Human approval | Only the literal Boolean `True` authorizes write operations; rejected or unapproved proposals must not create artifacts, branches, or commits. | `tests/test_approval_artifact_integrity.py` and `tests/test_workflow_integration.py` pass in the project environment. |
-| AWS collection boundary | Live AWS discovery failures stop the workflow before approval or writes. Cost collection failures do not discard successfully collected metrics. | `tests/test_workflow_integration.py` and `tests/test_agent_billing_regression.py` pass in the project environment. |
-| Cost attribution | EC2 cost attribution requires an unambiguous resource-ID and region match. Period-specific observed spend is not silently treated as verified monthly spend. Mock savings are identified as simulated. | `tests/test_cost_attribution.py`, `tests/test_ec2_resource_costs.py`, and `tests/test_aws_costs_regression.py` pass in the project environment. |
-| HCL validation | Invalid generated HCL blocks proposal writing; validation runs locally and does not apply Terraform. | Existing HCL/guardrail tests pass, and the workflow integration test passes. |
-| Git rollback | A staging or commit failure restores the original branch and removes the temporary proposal state without deleting pre-existing user artifacts. | `tests/test_write_branch_rollback.py` passes in the project environment. |
-| Artifact integrity | `manifest.json` records SHA-256 hashes for the generated `proposal.json`, `main.tf`, `audit.json`, and `billing.json`; changing an artifact causes a digest mismatch. | `tests/test_approval_artifact_integrity.py` and the approved-workflow integration test pass in the project environment. |
-| Local-only execution | The workflow does not apply Terraform, call cloud write APIs, push Git branches, or create hosted pull requests. | Review implementation and subprocess/API call sites; tests alone are not sufficient to prove absence of every external write path. |
+The GitHub Actions product CI validates backend tests, frontend compilation, Docker images, configuration, dependency and secret scans, a signed-in Chromium browser journey, and Compose state retention. The Compose job also verifies checksum-backed state backup, actual restore, and recovered administrator login/account evidence.
 
-## Validation commands (PowerShell)
+The latest validated candidate must be rechecked against the immutable commit ultimately published as `v1.0.0`. CI status at another commit is not release evidence.
 
-Run from the repository root. Stop and investigate at the first failing command; do not freeze or commit based on partial results.
+## Operator evidence still required
 
-```powershell
-uv run python -m py_compile src\agent.py src\tools\cloud_metrics.py src\tools\aws_costs.py src\utils\guardrails.py
-uv run pytest tests/test_cost_attribution.py -v
-uv run pytest tests/test_aws_costs_regression.py -v
-uv run pytest tests/test_ec2_resource_costs.py -v
-uv run pytest tests/test_agent_billing_regression.py -v
-uv run pytest tests/test_write_branch_rollback.py -v
-uv run pytest tests/test_approval_artifact_integrity.py -v
-uv run pytest tests/test_workflow_integration.py -v
-uv run pytest -v
-uv run ruff check src tests
+- Live AWS: source identity, target-role assumption, linked-account Cost Explorer, EC2/EBS/RDS inventory, S3 and EKS read-only collection, service permission-denied and empty-inventory behavior.
+- Upgrade and rollback: back up a **previous working deployment**, upgrade to the exact release candidate without data loss, restore a saved snapshot to a disposable destination, then verify that the prior known-good version can read its recovered state.
+- Security: IAM least privilege, local administrator credentials, host/network exposure, runtime permissions, and acceptance of operational limitations.
+- Final publication: approved release reference, immutable `v1.0.0` tag, SBOM, SHA-256 checksums, GitHub build attestations, OCI images, and downloadable release assets.
+
+Do not check these off without dated, reproducible evidence. Do not commit AWS access keys, billing details, customer identifiers, or unsanitized logs.
+
+## Release commands (Bash)
+
+From the repository root:
+
+```bash
+uv sync --dev
+uv run python -m pytest -q
+cd frontend
+npm ci
+npm run lint
+npm run typecheck
+npm run build
+cd ..
+FINOVAUNT_BOOTSTRAP_PASSWORD=local-validation-only docker compose config --quiet
 git diff --check
-```
-
-If a listed test file does not exist in the checkout, add the reviewed test file first. Do not interpret a missing test file as a passing test.
-
-## Freeze criteria
-
-Freeze only after all of the following are true:
-
-- All validation commands above pass in the target repository and environment.
-- Any failing tests are fixed and rerun; no failures are waived silently.
-- The working tree diff is reviewed, including generated files and test changes.
-- A clean Git status is confirmed before creating the freeze commit.
-- The documentation is updated to distinguish tested behavior from architectural intent and known limitations.
-
-Useful final checks:
-
-```powershell
 git status --short
-git diff --stat
-git diff --check
 ```
 
-## Known limitations
+For live AWS verification, follow the read-only command in [Release v1 Checklist](RELEASE_V1_CHECKLIST.md). For installation, backup/restore, and rollback, follow [Docker Operations](DOCKER.md). See [Security Policy](../SECURITY.md) for deployment boundaries.
 
-- Mock savings are illustrative and must remain explicitly labeled as simulated.
-- Cost Explorer period totals are not, by themselves, verified per-resource monthly costs.
-- Regex-based secret scrubbing is defense-in-depth, not complete data-loss prevention.
-- A test suite provides evidence for tested cases, not a mathematical proof of all safety properties.
-- This document does not claim the test suite has passed. Update the status only after recording results from the target project environment.
+## Stable-release decision
+
+The [Publish Stable Release workflow](../.github/workflows/publish-stable.yml) requires operator confirmations and an evidence reference; do not set these to true before the corresponding acceptance evidence exists. It must be triggered from `main` only after all release blockers are cleared. Keep the published tag immutable and handle later requests through new PRs.
