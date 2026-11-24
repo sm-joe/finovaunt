@@ -4,7 +4,7 @@ Finovaunt is a **self-hosted, AWS-only FinOps platform** designed around read-on
 
 **Security reports are welcome.** Please report vulnerabilities **privately** and keep credentials, account identifiers, billing records and exploit details out of public issues.
 
-## Report a vulnerability
+## Report A Vulnerability
 
 **Preferred channel:** [GitHub Private Vulnerability Reporting / Security Advisories](https://github.com/sm-joe/finovaunt/security/advisories).
 
@@ -20,11 +20,11 @@ A helpful private report includes:
 
 Never include actual AWS credentials, session tokens, administrator passwords, External IDs, private keys, customer billing exports or sensitive infrastructure inventories. Test only infrastructure that you own or have permission to assess.
 
-### Response and disclosure
+### Response And Disclosure
 
 Maintainers review incoming reports, attempt reproduction, evaluate severity and coordinate fixes and advisories when feasible. The project currently makes **no fixed acknowledgement, remediation or disclosure SLA**. We ask reporters to coordinate disclosure privately while a safe mitigation is prepared.
 
-## Supported versions
+## Supported Versions
 
 | Distribution | Security maintenance |
 | --- | --- |
@@ -34,7 +34,7 @@ Maintainers review incoming reports, attempt reproduction, evaluate severity and
 
 Consult [Release Acceptance](docs/RELEASE_V1_CHECKLIST.md) and [Release Readiness](docs/RELEASE_READINESS.md) for current verification. A passing CI scan is not a guarantee of safe public deployment.
 
-## Security architecture
+## Security Architecture
 
 Finovaunt retains sensitive cloud and business metadata even when AWS requests are read-only. Security depends on both the application boundary and **how operators configure the host, IAM roles and network**.
 
@@ -49,7 +49,7 @@ Finovaunt retains sensitive cloud and business metadata even when AWS requests a
 | **Local state** | Persisted accounts, administrator, scan evidence, history and review records | Restrict host filesystem and backups; define encryption, retention and recovery policy |
 | **Optional executor** | Separate opt-in non-production CLI with dedicated role and resource/tag checks | Maintain approval and execution separation; do not grant its write rights to collectors |
 
-### Read-only dashboard, separate execution boundary
+### Read-Only Dashboard, Separate Execution Boundary
 
 The normal Finovaunt dashboard **does not start or stop instances, resize databases, delete volumes, change Kubernetes objects or apply Terraform**. A recorded recommendation decision does not authorize execution.
 
@@ -57,9 +57,9 @@ A separately configured CLI, **scripts/nonprod_executor.py**, can perform explic
 
 A failure to retrieve cloud evidence must remain **unavailable, partial or not assessed**. It must never silently become a zero-cost observation, successful inventory result or verified savings claim.
 
-## Secure deployment baseline
+## Secure Deployment Baseline
 
-### Authentication and network
+### Authentication And Network
 
 - Generate a unique administrator password with at least 12 characters and store the bootstrap secret privately. The bootstrap value is only for a new installation; do not delete persisted state to reset credentials.
 - Keep the default Compose listener bindings on **127.0.0.1:4173 (frontend)** and **127.0.0.1:8787 (API)**. Do not publish these ports directly to the internet.
@@ -68,7 +68,7 @@ A failure to retrieve cloud evidence must remain **unavailable, partial or not a
 - Retain container hardening: non-root API identity, read-only root filesystem, dropped Linux capabilities and no-new-privileges, together with the separate persistent-volume ownership initialization helper.
 - This release targets **single-administrator private hosting**. It does not claim multi-user RBAC or hardening for arbitrary internet-facing deployments.
 
-### AWS IAM and credentials
+### AWS IAM And Credentials
 
 - Prefer automatically rotated **AWS workload identities** (instance, task or pod roles) when the runtime supports them.
 - Cross-account collection requires explicit **sts:AssumeRole** authorization on the source principal and appropriate target-role trust. A role ARN alone does not grant access.
@@ -80,7 +80,7 @@ A failure to retrieve cloud evidence must remain **unavailable, partial or not a
 
 See [AWS FinOps Scope](docs/AWS_FINOPS_SCOPE.md) and [Account Access & Billing](docs/ACCESS_AND_BILLING.md) for current supported collection semantics.
 
-## Data confidentiality and recovery
+## Data Confidentiality And Recovery
 
 Local persisted state and output may contain AWS account identifiers, role ARNs, cost observations, inventory, administrator password hashes, review records and audit trails.
 
@@ -104,7 +104,7 @@ docker compose start api frontend
 
 Follow [Docker Operations](docs/DOCKER.md) for secure restore procedures, file ownership and rollback guidance.
 
-## Security validation and release assurance
+## Security Validation And Release Assurance
 
 The Product CI workflow includes:
 
@@ -122,7 +122,7 @@ These results apply only to the tested commit and CI environment. The **operator
 
 The configured stable release workflow aims to generate OCI images, a source archive, SBOM, checksums and GitHub build attestations. **Do not describe these as published or verified until the GitHub release and attestations actually exist.**
 
-### Security invariants for contributors
+### Security Invariants For Contributors
 
 1. **Fail closed on identity and coverage:** IAM errors, pagination limits, incomplete price evidence and unreachable Kubernetes telemetry must not silently pass.
 2. **Preserve account isolation:** Linked-account billing scope and collector revision must be respected; stale scans remain historical.
@@ -131,7 +131,7 @@ The configured stable release workflow aims to generate OCI images, a source arc
 5. **Do not claim unmeasured savings:** S3 capacity is not per-bucket billing, EKS namespace CPU is not workload spend, and storage price scenarios are not realized reductions.
 6. **Do not weaken security gates to ship:** Document exceptions and investigate failures rather than suppressing or misrepresenting them.
 
-## Related documentation
+## Related Documentation
 
 - [README — product overview and quick start](README.md)
 - [Docker Operations](docs/DOCKER.md)
