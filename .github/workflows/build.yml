@@ -55,7 +55,7 @@ jobs:
 
   compose-runtime-smoke:
     name: Boot API and Dashboard on Docker Compose
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
       FINOVAUNT_BOOTSTRAP_PASSWORD: ci-runtime-bootstrap-pass-2026
