@@ -13,7 +13,7 @@ PASSWORD = "ci-runtime-rotated-credential-2026"
 
 def main() -> None:
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
         page = browser.new_page(viewport={"width": 1440, "height": 900})
         try:
             page.goto(BASE, wait_until="networkidle", timeout=30000)
