@@ -11,8 +11,6 @@
 
 **[Quick Start](#quick-start) · [Capabilities](#capabilities) · [Architecture](#architecture) · [Operations](docs/DOCKER.md) · [Security](SECURITY.md)**
 
-> **Release status:** The v1.0.0 candidate passed Product CI, but the stable release has not yet been published. [Release acceptance](docs/RELEASE_V1_CHECKLIST.md) records the remaining verification required for signed publication. A green CI badge is not a production certification.
-
 ## Why Finovaunt?
 
 Cost data is useful when teams can connect **what AWS billed**, **which resources exist**, and **what evidence supports an optimization decision**.
