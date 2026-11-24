@@ -119,6 +119,14 @@ jobs:
           sudo -n python scripts/control_backup.py backup "$RUNNER_TEMP/finovaunt-state.tar.gz"
           sudo -n python scripts/control_backup.py verify "$RUNNER_TEMP/finovaunt-state.tar.gz"
 
+      - name: Restore Verified Snapshot And Prove Recovered Login
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo -n python scripts/control_backup.py restore "$RUNNER_TEMP/finovaunt-state.tar.gz" --force
+          docker compose up -d --force-recreate api frontend
+          python scripts/acceptance_state_upgrade.py verify
+
       - name: Inspect Container Status on Failure
         if: failure()
         run: docker compose logs --tail=120 api frontend init-data
