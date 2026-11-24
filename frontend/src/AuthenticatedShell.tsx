@@ -170,7 +170,7 @@ function LoginScreen({onLogin,busy,error,signedOut}:{onLogin:(u:string,p:string)
   const [password,setPassword]=useState("");
   const [visible,setVisible]=useState(false);
   function submit(event:FormEvent) {event.preventDefault();void onLogin(username,password);}
-  return <AuthExperience title={signedOut ? "You?re signed out" : "Sign in"} description={signedOut ? "Sign in again to return to your workspace." : "Use your Finovaunt credentials to open the workspace."}>
+  return <AuthExperience title={signedOut ? "You’re signed out" : "Sign in"} description={signedOut ? "Sign in again to return to your workspace." : "Use your Finovaunt credentials to open the workspace."}>
     {error && <div className="fv-auth-message error" role="alert">{error}</div>}
     <form onSubmit={submit} className="fv-auth-form">
       <label htmlFor="fv-login-username">Username<input id="fv-login-username" autoComplete="username" required value={username} onChange={event=>setUsername(event.target.value)}/></label>
