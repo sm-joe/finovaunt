@@ -23,7 +23,7 @@ def main() -> None:
             page.get_by_role("button", name="Sign In", exact=True).click()
 
             expect(page.get_by_role("heading", name="FinOps Overview")).to_be_visible(timeout=15000)
-            expect(page.get_by_text("Updated Account").first).to_be_visible()
+            expect(page.get_by_role("combobox", name="AWS account scope")).to_have_value("123456789012")
             # Open the real account workspace with the dashboard navigation.
             page.get_by_role("button", name="AWS Accounts").click()
             expect(page.get_by_role("heading", name="Cloud Accounts")).to_be_visible()
