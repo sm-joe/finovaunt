@@ -1,0 +1,178 @@
+name: Publish Stable Finovaunt Release
+
+# Explicit operator approval only: never publish on normal PR or main push.
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: Immutable semver tag to publish (v1.0.0 only for first stable)
+        required: true
+        type: choice
+        options: [v1.0.0]
+      live_aws_accepted:
+        description: Operator-confirmed live AWS read-only acceptance
+        required: true
+        type: boolean
+        default: false
+      upgrade_rollback_accepted:
+        description: Operator-confirmed prior-version upgrade and rollback
+        required: true
+        type: boolean
+        default: false
+      security_review_accepted:
+        description: Operator-confirmed security and IAM review
+        required: true
+        type: boolean
+        default: false
+      evidence_reference:
+        description: Link or internal tracking reference to real acceptance evidence
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+concurrency:
+  group: finovaunt-stable-v1.0.0
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: stable-release
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Require Explicit Release Acceptance
+        env:
+          VERSION: ${{ inputs.release_version }}
+          LIVE: ${{ inputs.live_aws_accepted }}
+          ROLLBACK: ${{ inputs.upgrade_rollback_accepted }}
+          SECURITY: ${{ inputs.security_review_accepted }}
+          EVIDENCE: ${{ inputs.evidence_reference }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$VERSION" = "v1.0.0"
+          test "$LIVE" = "true"
+          test "$ROLLBACK" = "true"
+          test "$SECURITY" = "true"
+          test -n "$EVIDENCE"
+          test "$(git branch --show-current)" = "main" || test "$GITHUB_REF" = "refs/heads/main"
+          if git rev-parse --verify refs/tags/"$VERSION" >/dev/null 2>&1; then
+            echo "Tag already exists; stable releases are immutable." >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - uses: astral-sh/setup-uv@v10.3.0
+      - name: Revalidate Locked Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv sync --dev
+          uv run python -m pytest -q
+          (cd frontend && npm ci && npm run lint && npm run typecheck && npm run build)
+          FINOVAUNT_BOOTSTRAP_PASSWORD=ci-release-not-a-real-password docker compose config --quiet
+
+      - name: Package Immutable Source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist-release
+          git archive --format=tar --prefix=finovaunt-v1.0.0/ HEAD | gzip -n > dist-release/finovaunt-v1.0.0.tar.gz
+
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@v0.24.3
+        with:
+          path: .
+          format: spdx-json
+          output-file: dist-release/finovaunt-v1.0.0.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push API
+        id: api
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/sm-joe/finovaunt-api:v1.0.0
+      - name: Build and Push Dashboard
+        id: dashboard
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/sm-joe/finovaunt-dashboard:v1.0.0
+
+      - name: Attest Source Build Provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: dist-release/finovaunt-v1.0.0.tar.gz
+      - name: Attest SBOM Provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: dist-release/finovaunt-v1.0.0.spdx.json
+      - name: Sign API Image Provenance
+        uses: actions/attest@v4
+        with:
+          subject-name: ghcr.io/sm-joe/finovaunt-api
+          subject-digest: ${{ steps.api.outputs.digest }}
+          push-to-registry: true
+      - name: Sign Dashboard Image Provenance
+        uses: actions/attest@v4
+        with:
+          subject-name: ghcr.io/sm-joe/finovaunt-dashboard
+          subject-digest: ${{ steps.dashboard.outputs.digest }}
+          push-to-registry: true
+
+      - name: Verify Artifact Provenance And Checksums
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd dist-release && sha256sum finovaunt-v1.0.0.tar.gz finovaunt-v1.0.0.spdx.json > SHA256SUMS)
+          (cd dist-release && sha256sum -c SHA256SUMS)
+          gh attestation verify dist-release/finovaunt-v1.0.0.tar.gz -R "$GITHUB_REPOSITORY"
+          gh attestation verify dist-release/finovaunt-v1.0.0.spdx.json -R "$GITHUB_REPOSITORY"
+
+      - name: Publish Immutable Stable v1.0.0
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create v1.0.0 dist-release/* \
+            --target "$GITHUB_SHA" \
+            --title "Finovaunt v1.0.0" \
+            --notes-file docs/RELEASE_V1_NOTES.md \
+            --latest
+          gh release view v1.0.0 --json tagName,isDraft,isPrerelease,url
