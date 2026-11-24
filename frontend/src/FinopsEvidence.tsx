@@ -53,8 +53,8 @@ function EvidenceNotice({message}: {message: string}) {
 function Section({title, name, section, children}: {
   title: string; name: string; section?: FinOpsSection; children: React.ReactNode;
 }) {
-  return <section className="panel table-panel" style={{marginTop: 16}} aria-label={name}>
-    <h3>{title}</h3>
+  return <section className="panel table-panel" aria-labelledby={`finops-${name}`}>
+    <h2 id={`finops-${name}`}>{title}</h2>
     {!section ? <EvidenceNotice message="No collection evidence exists for this section."/> :
       section.status !== "collected" ? <p role="status">Not assessed · {section.reason || "AWS data not available."}</p> :
       children}
@@ -68,14 +68,14 @@ export default function FinopsEvidence({report}: {report: FinOpsAssessment | nul
   const storage = sections.s3?.evidence as S3Evidence | undefined;
   const eks = sections.eks?.evidence as EksEvidence | undefined;
   const budgets = sections.budgets?.evidence as BudgetEvidence | undefined;
-  return <div aria-label="Collected AWS FinOps evidence">
-    <p role="status">Collected: {new Date(report.scanned_at).toLocaleString()} · {report.status} · Read-only collection</p>
+  return <div className="fv-finops-layout" aria-label="Collected AWS FinOps evidence">
+    <p className="fv-finops-status" role="status">Collected: {new Date(report.scanned_at).toLocaleString()} · {report.status} · Read-only collection</p>
     <Section title={humanName.cost_allocation} name="cost_allocation" section={sections.cost_allocation}>
       <EvidenceNotice message="Month-to-date AWS Cost Explorer spend for the selected linked account. Team/Project/Environment require activated cost allocation tags; Region comes from AWS billing dimensions. Unallocated charges are explicit, not resource-level costs."/>
-      {(["team", "project", "environment", "region"] as const).map(key => {
+      <div className="fv-finops-dimensions">{(["team", "project", "environment", "region"] as const).map(key => {
         const group = allocation?.allocation?.[key];
-        return <div key={key} style={{marginTop: 18}}>
-          <h4 style={{textTransform: "capitalize"}}>{key}</h4>
+        return <div key={key}>
+          <h3 className="fv-allocation-dimension">{key}</h3>
           {group?.groups?.length ? <div className="table-scroll"><table>
             <thead><tr><th>{key === "environment" ? "Environment" : key === "team" ? "Team" : key === "region" ? "AWS Region" : "Project"}</th><th>Observed Spend</th></tr></thead>
             <tbody>{group.groups.map((item, i) =>
@@ -83,7 +83,7 @@ export default function FinopsEvidence({report}: {report: FinOpsAssessment | nul
           </table></div> : <EvidenceNotice message="No activated tag allocation data returned."/>}
           {group && <p className="context-note">Unallocated: {showMoney(group.unallocated_cost_exact, group.currency)}</p>}
         </div>;
-      })}
+      })}</div>
     </Section>
     <Section title={humanName.rightsizing} name="rightsizing" section={sections.rightsizing}>
       <EvidenceNotice message="These are manual investigation candidates, not instance-size prescriptions or verified savings. Check memory, IO, peaks and business ownership before changing AWS resources."/>

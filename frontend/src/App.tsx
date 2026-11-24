@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { Activity, AlertCircle, ArrowUpRight, BarChart3, Boxes, Cloud, Home, Layers3, LogOut, RefreshCw, Search, Settings2, ShieldCheck, UserRound, Zap } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertCircle, ArrowUpRight, Cloud, LogOut, RefreshCw } from "lucide-react";
 import FinovauntOverview from "./FinovauntOverview";
 import "./finovaunt-enterprise.css";
 import FinopsEvidence, { type FinOpsAssessment } from "./FinopsEvidence";
@@ -15,7 +15,7 @@ type HistoricEbs = { account_id: string; region: string; resource_id: string; na
 type AwsSourceStatus = { status: "direct_role_ready" | "assume_role_required"; source_account_id: string; source_principal_arn: string; target_role_arn: string; note: string; checked_at: string; role_assumption_verified: boolean };
 type Review = { id: string; inventory_scan_id: string; resource_id: string; decision: string; note: string; reviewed_by: string; reviewed_at: string; infrastructure_applied: false };
 type Dashboard = { source: "aws_collected"; account: Account; billing: Billing | null; inventory: Inventory | null; billing_history: History[]; review_candidates: Candidate[]; ebs_reviews: Review[]; optimization_history: HistoricEbs[]; potential_ebs_savings_usd?: string | null; ebs_price_coverage?: {priced_candidates:number; total_candidates:number}; estimated_savings: null; realized_savings: null; billing_status: string; inventory_status: string };
-type Tab = "Overview" | "Assets" | "Cost Breakdown" | "AWS FinOps" | "Review Candidates" | "Scan History";
+export type Tab = "Overview" | "Assets" | "Cost Breakdown" | "AWS FinOps" | "Review Candidates" | "Scan History";
 
 function formatMoney(amount: number | null | undefined, currency?: string) {
   if (amount == null || !Number.isFinite(amount)) return "Not available";
@@ -37,13 +37,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 function Empty({ children }: { children: React.ReactNode }) {
-  return <div className="empty-state" style={{ padding: 28, textAlign: "center" }}>{children}</div>;
+  return <div className="empty-state">{children}</div>;
 }
-export default function App({ onOpenCloud, onOpenProfile, onSignOut, username }: { onOpenCloud: () => void; onOpenProfile: () => void; onSignOut: () => void; username: string }) {
+export default function App({ onOpenCloud, onOpenProfile, onSignOut, username, tab, onNavigate, signingOut }: { onOpenCloud: () => void; onOpenProfile: () => void; onSignOut: () => void; username: string; tab: Tab; onNavigate: (tab: Tab) => void; signingOut: boolean }) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [accountId, setAccountId] = useState("");
   const [data, setData] = useState<Dashboard | null>(null);
-  const [tab, setTab] = useState<Tab>("Overview");
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState("");
@@ -61,7 +60,29 @@ export default function App({ onOpenCloud, onOpenProfile, onSignOut, username }:
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewMessage, setReviewMessage] = useState("");
   const [lastRefresh, setLastRefresh] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
+
+  const dashboardRequest = useRef(0);
+  const finopsRequest = useRef(0);
+
+  function selectAccount(id: string) {
+    dashboardRequest.current++;
+    finopsRequest.current++;
+    setAccountId(id);
+    setData(null);
+    setFinops(null);
+    setLoading(Boolean(id));
+    setLastRefresh(null);
+    setError("");
+    setScanErrors([]);
+    setFinopsError("");
+    setSourceError("");
+    setSourceStatus(null);
+    setExternalId("");
+    setReviewResource("");
+    setReviewNote("");
+    setReviewDecision("approved_for_manual_review");
+    setReviewMessage("");
+  }
 
   const loadAccounts = useCallback(async () => {
     try {
@@ -72,40 +93,52 @@ export default function App({ onOpenCloud, onOpenProfile, onSignOut, username }:
   }, []);
 
   const loadDashboard = useCallback(async (id: string) => {
+    const requestId = ++dashboardRequest.current;
     if (!id) { setData(null); setLoading(false); return; }
     setLoading(true); setError("");
     try {
       const response = await request<Dashboard>("/api/live-dashboard?account_id=" + encodeURIComponent(id));
+      if (requestId !== dashboardRequest.current) return;
       setData(response); setLastRefresh(new Date().toISOString());
     } catch (err) {
+      if (requestId !== dashboardRequest.current) return;
       setData(null);
       setError(err instanceof Error ? err.message : "Unable to load AWS data.");
-    } finally { setLoading(false); }
+    } finally { if (requestId === dashboardRequest.current) setLoading(false); }
   }, []);
 
   const loadFinops = useCallback(async (id: string) => {
+    const requestId = ++finopsRequest.current;
     if (!id) { setFinops(null); return; }
     try {
       const response = await request<{latest: FinOpsAssessment | null}>("/api/finops-assessments?account_id=" + encodeURIComponent(id));
-      setFinops(response.latest);
-    } catch { setFinops(null); }
+      if (requestId === finopsRequest.current) setFinops(response.latest);
+    } catch { if (requestId === finopsRequest.current) setFinops(null); }
   }, []);
 
   async function collectFinops() {
     if (!accountId || finopsBusy) return;
+    const requestId = ++finopsRequest.current;
     setFinopsBusy(true); setFinopsError("");
     try {
       const result = await request<FinOpsAssessment>("/api/finops-assessments", {
         method: "POST", body: JSON.stringify({account_id: accountId, external_id: externalId}),
       });
-      setFinops(result);
+      if (requestId === finopsRequest.current) setFinops(result);
     } catch (err) {
-      setFinopsError(err instanceof Error ? err.message : "FinOps assessment unavailable.");
+      if (requestId === finopsRequest.current) setFinopsError(err instanceof Error ? err.message : "FinOps assessment unavailable.");
     } finally { setFinopsBusy(false); }
   }
 
   useEffect(() => { void loadAccounts(); }, [loadAccounts]);
-  useEffect(() => { void loadDashboard(accountId); void loadFinops(accountId); }, [accountId, loadDashboard, loadFinops]);
+  useEffect(() => {
+    void loadDashboard(accountId);
+    void loadFinops(accountId);
+    return () => {
+      dashboardRequest.current++;
+      finopsRequest.current++;
+    };
+  }, [accountId, loadDashboard, loadFinops]);
 
   async function checkSource() {
     if (!accountId || checkingSource) return;
@@ -134,7 +167,7 @@ export default function App({ onOpenCloud, onOpenProfile, onSignOut, username }:
 
   async function submitReview(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!data?.inventory || !reviewResource || reviewNote.trim().length < 10) return;
+    if (reviewBusy || !data?.inventory || !reviewResource || reviewNote.trim().length < 10) return;
     setReviewBusy(true); setReviewMessage("");
     try {
       await request("/api/ebs-reviews", { method: "POST", body: JSON.stringify({
@@ -151,99 +184,93 @@ export default function App({ onOpenCloud, onOpenProfile, onSignOut, username }:
 
   const billing = data?.billing;
   const inventory = data?.inventory;
-  const noEvidence = !billing && !inventory;
+  const fixedSettings = tab === "Overview" || tab === "Review Candidates" || tab === "AWS FinOps";
+  const CollectionSettings = fixedSettings ? "section" : "details";
+  const selectedAccount = accounts.find(account => account.account_id === accountId);
+  const titles: Record<Tab, string> = {
+    Overview: "Overview", Assets: "AWS resources", "Cost Breakdown": "Cost Explorer",
+    "AWS FinOps": "Allocation & EKS", "Review Candidates": "Recommendations", "Scan History": "Scan history",
+  };
 
-  return <div className="app-shell fv-shell">
-    <aside className="sidebar fv-sidebar">
-      <div className="brand fv-brand"><div className="brand-symbol fv-logo"><Layers3 size={23}/></div><div><strong>Finovaunt</strong><span>AWS FinOps Platform</span></div></div>
-      <nav className="nav-list fv-nav" aria-label="Dashboard sections">
-        <span className="fv-nav-label">WORKSPACE</span>
-        {([
-          ["Overview", Home, "Overview"],
-          ["Review Candidates", Zap, "Recommendations"],
-          ["Assets", Boxes, "Resources"],
-          ["Cost Breakdown", BarChart3, "Cost Explorer"],
-          ["AWS FinOps", Layers3, "Cost Allocation & EKS"],
-          ["Scan History", Activity, "Scan History"],
-        ] as const).map(([value,Icon,label])=><button key={value} className={"nav-item "+(tab===value?"active":"")} aria-current={tab===value?"page":undefined} onClick={()=>setTab(value)}><Icon size={18}/><span>{label}</span></button>)}
-        <span className="fv-nav-label fv-nav-label-secondary">ACCOUNT</span>
-        <button className="nav-item" onClick={onOpenCloud}><Cloud size={18}/><span>AWS Accounts</span></button>
-        <button className="nav-item" onClick={onOpenProfile}><Settings2 size={18}/><span>Settings & Profile</span></button>
-      </nav>
-      <div className="sidebar-bottom fv-sidebar-bottom">
-        <div className="fv-workload-box"><span className="fv-workload-mark">aws</span><div><strong>AWS Only</strong><small>Read-only collector</small></div><ShieldCheck size={17}/></div>
-        <span className="version">FINOVAUNT · COST INTELLIGENCE</span>
+  const showOverview = tab === "Overview" && Boolean(accountId) && !loading && !error;
+  const collectionSettings = selectedAccount && (
+    <CollectionSettings className={fixedSettings ? "panel fv-collection-settings" : "fv-disclosure fv-collection-settings"} key={`settings-${accountId}`}>
+      {fixedSettings ? <h2>Collection settings and snapshot dates</h2> : <summary>Collection settings and snapshot dates</summary>}
+      <dl className="fv-snapshot-dates">
+        <div><dt>Region</dt><dd>{selectedAccount.region}</dd></div>
+        <div><dt>Billing snapshot</dt><dd>{billing ? formatTime(billing.scanned_at) : "Not collected"}</dd></div>
+        <div><dt>Inventory snapshot</dt><dd>{inventory ? formatTime(inventory.scanned_at) : "Not collected"}</dd></div>
+        {lastRefresh && <div><dt>Last refresh</dt><dd>{formatTime(lastRefresh)}</dd></div>}
+      </dl>
+      <div className="fv-collector-controls">
+        <label>IAM External ID (if required)<input type="password" autoComplete="off" placeholder="Not saved" value={externalId} onChange={e => setExternalId(e.target.value)}/></label>
+        <button className="fv-outline-button" type="button" onClick={() => void checkSource()} disabled={checkingSource}>{checkingSource ? "Checking…" : "Check AWS credentials"}</button>
+        <button className="fv-outline-button" type="button" aria-label="Refresh dashboard evidence" disabled={loading || finopsBusy} onClick={() => { void loadDashboard(accountId); void loadFinops(accountId); }}>Refresh saved evidence</button>
+        {tab !== "Overview" && <button className="fv-outline-button" type="button" onClick={() => void collectAWS()} disabled={scanning}>{scanning ? "Collecting…" : "Collect AWS data"}</button>}
       </div>
-    </aside>
-    <main className="main fv-main">
+    </CollectionSettings>
+  );
+
+  return <main className="main fv-main" id="main-content" tabIndex={-1}>
       <header className="topbar fv-topbar">
         <div className="fv-toolbar-left">
           <label className="fv-toolbar-field fv-account-select"><span>Account Scope</span>
-            <select aria-label="AWS account scope" value={accountId} onChange={e=>{setAccountId(e.target.value);setScanErrors([]);setExternalId("");setSourceStatus(null);setSourceError("");setSearch("");}}>
+            <select aria-label="AWS account scope" value={accountId} disabled={scanning || finopsBusy || checkingSource || reviewBusy} onChange={e=>selectAccount(e.target.value)}>
               {!accounts.length&&<option value="">No AWS accounts connected</option>}
               {accounts.map(a=><option value={a.account_id} key={a.account_id}>{a.name} · {a.account_id}</option>)}
             </select>
           </label>
-          <div className="fv-toolbar-field fv-region-tag"><span>AWS Region</span><strong>{accounts.find(a=>a.account_id===accountId)?.region||"Not selected"}</strong></div>
-          <div className="fv-toolbar-field fv-period-tag"><span>Billing Period</span><strong>Current Month</strong></div>
         </div>
         <div className="fv-toolbar-right">
-          <label className="fv-toolbar-search"><Search size={16}/><input aria-label="Search collected services and recommendations" placeholder="Search services or resources…" value={search} onChange={e=>setSearch(e.target.value)}/></label>
-          <button type="button" className="fv-icon-action" title="Refresh dashboard evidence" aria-label="Refresh dashboard evidence" disabled={!accountId||loading} onClick={()=>{void loadDashboard(accountId);void loadFinops(accountId);}}><RefreshCw size={17}/></button>
-          <div className="fv-user-menu"><button type="button" className="fv-avatar-button" onClick={onOpenProfile} title="Open profile"><span className="fv-avatar">{(username||"A").slice(0,2).toUpperCase()}</span><UserRound size={14}/></button>
-            <button type="button" className="fv-icon-action fv-signout" onClick={onSignOut} title="Sign out" aria-label="Sign out"><LogOut size={16}/></button></div>
+          <div className="fv-user-menu"><button type="button" className="fv-avatar-button" onClick={onOpenProfile} title="Open profile" aria-label="Open profile"><span className="fv-avatar">{(username||"A").slice(0,2).toUpperCase()}</span></button>
+            <button type="button" className="fv-icon-action fv-signout" onClick={onSignOut} disabled={signingOut} title="Sign out" aria-label="Sign out"><LogOut size={16}/></button></div>
         </div>
       </header>
       <div className="page-content fv-page">
-        <section className="page-heading fv-heading"><div><div className="fv-heading-title"><h1>{tab==="Overview"?"FinOps Overview":tab==="AWS FinOps"?"AWS FinOps Evidence":tab==="Review Candidates"?"Optimization Recommendations":tab==="Assets"?"AWS Resources":tab==="Cost Breakdown"?"Cost Explorer":"Scan History"}</h1><span className="fv-aws-tag">AWS</span></div><p>Spend, optimization and resource evidence across the selected AWS account.</p></div>
-          <div className="fv-heading-actions"><span className="fv-readonly"><ShieldCheck size={15}/> Read-only collector</span><button className="fv-outline-button" onClick={onOpenCloud}><Cloud size={16}/> Manage Accounts</button><button className="fv-primary-button" onClick={()=>void collectAWS()} disabled={!accountId||scanning}><RefreshCw size={16}/>{scanning?"Collecting…":"Collect AWS Data"}</button></div>
+        <section className="page-heading fv-heading">
+          <h1>{titles[tab]}</h1>
+          {accountId && tab === "Overview" && <button className="fv-primary-button" onClick={() => void collectAWS()} disabled={scanning}><RefreshCw size={16}/>{scanning ? "Collecting…" : "Collect AWS data"}</button>}
+          {accountId && tab === "AWS FinOps" && <button className="fv-primary-button" onClick={() => void collectFinops()} disabled={finopsBusy}><RefreshCw size={16}/>{finopsBusy ? "Collecting…" : "Collect FinOps evidence"}</button>}
         </section>
-        {!accounts.length?<section className="panel fv-connect-panel"><Cloud size={24}/><div><h2>Connect your first AWS account</h2><p>Onboard the existing read-only collector role to begin cost and inventory collection.</p></div><button className="fv-primary-button" onClick={onOpenCloud}>Connect AWS <ArrowUpRight size={15}/></button></section>:
-        <details className="fv-collector-details"><summary><ShieldCheck size={16}/> Connection & Collection Settings <span>{accounts.find(a=>a.account_id===accountId)?.name} · {data?.account?.region||"AWS"}</span></summary>
-          <div className="fv-collector-controls"><label>IAM External ID (only when required)<input type="password" autoComplete="off" placeholder="Not saved" value={externalId} onChange={e=>setExternalId(e.target.value)}/></label>
-            <button className="fv-outline-button" type="button" onClick={()=>void checkSource()} disabled={checkingSource||!accountId}>{checkingSource?"Checking…":"Check AWS Credentials"}</button>
-            <button className="fv-outline-button" type="button" onClick={()=>void collectFinops()} disabled={finopsBusy||!accountId}>{finopsBusy?"Collecting…":"Collect FinOps Evidence"}</button>
-          </div>
-        </details>}
+        {!accounts.length && !loading && !error && <section className="panel fv-connect-panel"><Cloud size={22}/><div><h2>Connect an AWS account</h2><p>Add a read-only IAM role to start collecting billing and inventory.</p></div><button className="fv-primary-button" onClick={onOpenCloud}>Connect AWS <ArrowUpRight size={15}/></button></section>}
         {sourceStatus && <section className="panel" style={{marginBottom: 16}} aria-live="polite"><strong>AWS Source Identity</strong><p>{sourceStatus.status === "direct_role_ready" ? "Direct collector role ready" : "Source credentials found; target role assumption still needs verification"} · {sourceStatus.source_account_id}</p><small>{sourceStatus.source_principal_arn}</small><p>{sourceStatus.note}</p></section>}
         {sourceError && <div className="error-banner" role="alert"><AlertCircle size={18}/><div><strong>AWS Credentials Unavailable</strong><span>{sourceError}</span></div></div>}
         {error && <div className="error-banner" role="alert"><AlertCircle size={18}/><div><strong>Unable to Load Account Data</strong><span>{error}</span></div></div>}
         {scanErrors.map(message => <div key={message} className="error-banner" role="alert"><AlertCircle size={18}/><div><strong>AWS Collection Failed</strong><span>{message}</span><small>Verify the source AWS credential chain, sts:AssumeRole trust, External ID, and read-only permissions.</small></div></div>)}
         {loading && <p role="status">Loading persisted AWS evidence…</p>}
-        {accountId && !loading && noEvidence && !error && <section className="panel" style={{marginBottom: 20}}><h2>No AWS Data Collected Yet</h2><p>This account has been onboarded, but neither Cost Explorer nor inventory collection has completed. Click <strong>Collect Live AWS Data</strong> after configuring the API container's AWS credentials. No spend or resource count is assumed.</p></section>}
-        {data && <div style={{marginBottom: 15,fontSize: 13,opacity: .8}}>Account: {data.account.account_id} · Region: {data.account.region} · Billing: {billing ? formatTime(billing.scanned_at) : "Not collected"} · Inventory: {inventory ? formatTime(inventory.scanned_at) : "Not collected"}{lastRefresh ? " · Dashboard refreshed " + formatTime(lastRefresh) : ""}</div>}
-        {tab === "Overview" && <FinovauntOverview
+        {showOverview && <FinovauntOverview key={accountId}
           billing={billing||null} history={data?.billing_history||[]} inventory={inventory||null}
           candidates={data?.review_candidates||[]} finops={finops}
           potentialStorageSavings={data?.potential_ebs_savings_usd||null}
           reviewedCount={data?.ebs_reviews?.length||0}
-          search={search} onNavigate={setTab}
+          onNavigate={onNavigate}
+          collectionSettings={collectionSettings}
         />}
-        {tab === "AWS FinOps" && <section className="panel table-panel">
-          <h2>AWS FinOps · Cost Allocation and Optimization</h2>
-          <p>Read-only assessment for AWS Cost Explorer tags, EC2/RDS utilization, S3 storage, EKS clusters and existing AWS Budgets. This does not execute shutdowns or claim unverified savings.</p>
-          <button className="primary-button" disabled={finopsBusy || !accountId} onClick={() => void collectFinops()}>{finopsBusy ? "Collecting Read-Only Evidence…" : "Collect AWS FinOps Evidence"}</button>
-          {finopsError && <p role="alert">{finopsError}</p>}
+        {accountId && !loading && tab === "AWS FinOps" && <>
+          {finopsError && <div className="error-banner" role="alert">{finopsError}</div>}
           <FinopsEvidence report={finops}/>
-        </section>}
-        {tab === "Assets" && <section className="panel table-panel"><h2>Observed AWS Resources</h2>{inventory ? inventory.assets.length ? <div className="table-scroll"><table><thead><tr><th>Resource</th><th>Type</th><th>State</th><th>Size</th><th>Region</th><th>Monthly Cost</th></tr></thead><tbody>{inventory.assets.map(a => <tr key={a.type + a.id}><td><strong>{a.name}</strong><small className="subline">{a.id}</small></td><td>{a.type.toUpperCase()}</td><td>{a.state}</td><td>{a.size}</td><td>{a.region}</td><td>Not attributed</td></tr>)}</tbody></table></div> : <Empty>AWS returned zero EC2, RDS, or EBS resources in the selected region.</Empty> : <Empty>Inventory not collected. Run an AWS collection to list actual resources.</Empty>}</section>}
-        {tab === "Cost Breakdown" && <section className="panel table-panel"><h2>Account-Level Billing · Cost Explorer</h2>{billing ? <><p>Unblended cost from {billing.period_start} through {billing.period_end_exclusive} (exclusive). Current month values are provisional.</p><div className="table-scroll"><table><thead><tr><th>AWS Service</th><th>Observed Spend</th><th>Currency</th></tr></thead><tbody>{[...billing.services].sort((a,b) => b.amount - a.amount).map(s => <tr key={s.service}><td>{s.service}</td><td>{formatMoney(s.amount, s.currency)}</td><td>{s.currency}</td></tr>)}</tbody></table></div></> : <Empty>No Cost Explorer billing collected for this account.</Empty>}</section>}
-        {tab === "Review Candidates" && <section className="panel table-panel">
-          <h2>EBS Optimization · Evidence and Human Review</h2>
-          <p>Potential monthly storage reductions are estimates from AWS Price List OnDemand GB-month rates, not realized savings. EKS/PV evidence, retained data, snapshots, IOPS and throughput may block or change a recommendation. Finovaunt never deletes resources.</p>
-          <div className="snapshot-row"><span>Potential monthly EBS storage reduction (priced subset)</span><strong>{data?.potential_ebs_savings_usd == null ? "Not estimable" : formatMoney(Number(data.potential_ebs_savings_usd))}</strong></div>
-          <div className="snapshot-row"><span>Verified or realized savings</span><strong>Not verified</strong></div>
-          <div className="snapshot-row"><span>Pricing coverage</span><strong>{data?.ebs_price_coverage?.priced_candidates ?? 0} of {data?.ebs_price_coverage?.total_candidates ?? 0} candidates</strong></div>
+        </>}
+        {accountId && !loading && tab === "Assets" && <section className="panel table-panel"><h2>Observed AWS Resources</h2>{inventory ? inventory.assets.length ? <div className="table-scroll"><table><thead><tr><th>Resource</th><th>Type</th><th>State</th><th>Size</th><th>Region</th><th>Monthly Cost</th></tr></thead><tbody>{inventory.assets.map(a => <tr key={a.type + a.id}><td><strong>{a.name}</strong><small className="subline">{a.id}</small></td><td>{a.type.toUpperCase()}</td><td>{a.state}</td><td>{a.size}</td><td>{a.region}</td><td>Not attributed</td></tr>)}</tbody></table></div> : <Empty>AWS returned zero EC2, RDS, or EBS resources in the selected region.</Empty> : <Empty>Inventory not collected. Run an AWS collection to list actual resources.</Empty>}</section>}
+        {accountId && !loading && tab === "Cost Breakdown" && <section className="panel table-panel"><h2>Account-Level Billing · Cost Explorer</h2>{billing ? <><p>Unblended cost from {billing.period_start} through {billing.period_end_exclusive} (exclusive). Current month values are provisional.</p><div className="table-scroll"><table><thead><tr><th>AWS Service</th><th>Observed Spend</th><th>Currency</th></tr></thead><tbody>{[...billing.services].sort((a,b) => b.amount - a.amount).map(s => <tr key={s.service}><td>{s.service}</td><td>{formatMoney(s.amount, s.currency)}</td><td>{s.currency}</td></tr>)}</tbody></table></div></> : <Empty>No Cost Explorer billing collected for this account.</Empty>}</section>}
+        {accountId && !loading && tab === "Review Candidates" && <div className="fv-review-layout">
+          <section className="panel fv-review-estimates">
+            <h2>Storage savings estimates</h2>
+            <p>Estimates use AWS on-demand storage rates. EKS ownership, retained data, snapshots, IOPS, and throughput can change the result. Realized savings require separate verification.</p>
+            <div className="snapshot-row"><span>Potential monthly EBS storage reduction</span><strong>{data?.potential_ebs_savings_usd == null ? "Not estimable" : formatMoney(Number(data.potential_ebs_savings_usd))}</strong></div>
+            <div className="snapshot-row"><span>Pricing coverage</span><strong>{data?.ebs_price_coverage?.priced_candidates ?? 0} of {data?.ebs_price_coverage?.total_candidates ?? 0} candidates</strong></div>
+          </section>
+          <section className="panel table-panel fv-review-candidates">
+          <h2>EBS candidates</h2>
           {inventory ? data?.review_candidates.length ? <div className="table-scroll"><table><thead><tr><th>Resource / Volume ID</th><th>Region</th><th>Potential Storage / Month</th><th>EKS PV Correlation</th><th>Risk / Confidence</th><th>Evidence</th></tr></thead><tbody>{data.review_candidates.map(c => <tr key={c.resource_id}>
             <td><strong>{c.name}</strong><small className="subline">{c.resource_id}</small></td>
             <td>{c.region}</td>
             <td>{c.estimated_monthly_savings == null ? "Not estimable" : formatMoney(Number(c.estimated_monthly_savings))}<small className="subline">Storage-only scenario, not verified</small></td>
             <td>{c.kubernetes?.status || "not_verified"}<small className="subline">{c.kubernetes?.discovery_status || "No EKS evidence"}</small>{c.kubernetes?.pv_references?.map((pv, i) => <small className="subline" key={i}>{pv.cluster} / PV {pv.pv} / PVC {pv.namespace || "?"}/{pv.pvc || "?"}</small>)}</td>
             <td>{c.risk} risk<small className="subline">{c.confidence} confidence</small></td>
-            <td><details><summary>View evidence and assumptions</summary><p>{c.reason}</p><ul>{(c.evidence || []).map((e,i) => <li key={i}>{e}</li>)}</ul><small>Pricing: {c.pricing ? `${c.pricing.source}; ${c.pricing.usd_per_gb_month} USD/${c.pricing.unit}` : "Unavailable"}</small><ul>{(c.assumptions || []).map((a,i) => <li key={i}>{a}</li>)}</ul></details></td>
+            <td className="fv-candidate-evidence"><p>{c.reason}</p><ul>{(c.evidence || []).map((e,i) => <li key={i}>{e}</li>)}</ul><small>Pricing: {c.pricing ? `${c.pricing.source}; ${c.pricing.usd_per_gb_month} USD/${c.pricing.unit}` : "Unavailable"}</small><ul>{(c.assumptions || []).map((a,i) => <li key={i}>{a}</li>)}</ul></td>
           </tr>)}</tbody></table></div> : <Empty>No unattached EBS candidates identified in this inventory.</Empty> : <Empty>Collect real AWS inventory to review EBS volumes.</Empty>}
-          {data?.review_candidates.length ? <form onSubmit={e => void submitReview(e)} className="fin-settings-form" style={{marginTop: 24, display: "grid", gap: 12, maxWidth: 700}}>
-            <h3>Record Human Review (Audit Only)</h3>
+          </section>
+          {data?.review_candidates.length ? <section className="panel fv-review-form"><h2>Record a review</h2><form onSubmit={e => void submitReview(e)} className="fin-settings-form">
             <label>Unattached EBS volume<select required value={reviewResource} onChange={e => setReviewResource(e.target.value)}>
               <option value="">Select a candidate</option>{data.review_candidates.map(c => <option key={c.resource_id} value={c.resource_id}>{c.name} · {c.resource_id}</option>)}
             </select></label>
@@ -253,16 +280,17 @@ export default function App({ onOpenCloud, onOpenProfile, onSignOut, username }:
             <label>Evidence-Based Review Note<textarea required minLength={10} maxLength={2000} rows={3} value={reviewNote} onChange={e => setReviewNote(e.target.value)} placeholder="Document ownership, Kubernetes PV/PVC references, backup/retention verification, and risk." /></label>
             <button className="primary-button" disabled={reviewBusy || reviewNote.trim().length < 10 || !reviewResource}>{reviewBusy ? "Recording…" : "Save Review (No AWS Changes)"}</button>
             {reviewMessage && <p role="status">{reviewMessage}</p>}
-          </form> : null}
-          <h3 style={{marginTop: 22}}>Historical EBS Optimization Findings</h3>
+          </form></section> : null}
+          <section className="panel table-panel"><h2>Historical EBS findings</h2>
           <p>Findings persist after a volume disappears from subsequent inventories. Absence from a complete scan is not proof of deletion or verified financial savings.</p>
           {data?.optimization_history?.length ? <div className="table-scroll"><table><thead><tr><th>Volume</th><th>Region</th><th>Last Observed</th><th>Lifecycle</th><th>Historic Storage Scenario</th><th>Verified Savings</th></tr></thead><tbody>{[...data.optimization_history].reverse().map(h => <tr key={h.region + h.resource_id}><td><strong>{h.name}</strong><small className="subline">{h.resource_id}</small></td><td>{h.region}</td><td>{formatTime(h.last_seen_at)}<small className="subline">{h.observations} observations</small></td><td>{h.lifecycle.replaceAll("_", " ")}</td><td>{h.latest_evidence?.potential_storage_reduction_usd == null ? "Not estimable" : formatMoney(Number(h.latest_evidence.potential_storage_reduction_usd))}<small className="subline">Historic estimate, not accrued savings</small></td><td>Not verified</td></tr>)}</tbody></table></div> : <Empty>No historical EBS candidates recorded yet. Legacy scans are not retroactively inferred.</Empty>}
-          <h3 style={{marginTop: 22}}>Review Audit History</h3>
+          </section>
+          <section className="panel table-panel"><h2>Review audit history</h2>
           {data?.ebs_reviews?.length ? <div className="table-scroll"><table><thead><tr><th>Volume</th><th>Decision</th><th>Reviewer / Date</th><th>Note</th><th>AWS Changes</th></tr></thead><tbody>{[...data.ebs_reviews].reverse().map(r => <tr key={r.id}><td>{r.resource_id}</td><td>{r.decision}</td><td>{r.reviewed_by}<small className="subline">{formatTime(r.reviewed_at)}</small></td><td>{r.note}</td><td>None</td></tr>)}</tbody></table></div> : <Empty>No review decisions recorded.</Empty>}
-        </section>}
-        {tab === "Scan History" && <section className="panel table-panel"><h2>Persisted AWS Collection History</h2>{data?.billing_history.length ? <div className="table-scroll"><table><thead><tr><th>Collected At</th><th>Month</th><th>Month-to-Date Spend</th><th>Status</th></tr></thead><tbody>{[...data.billing_history].reverse().map(s => <tr key={s.id}><td>{formatTime(s.scanned_at)}</td><td>{s.period_start}</td><td>{formatMoney(s.total_cost,s.currency)}</td><td>{s.status}</td></tr>)}</tbody></table></div> : <Empty>No Cost Explorer collection history exists for this account.</Empty>}{inventory && <p>Latest inventory collection: {formatTime(inventory.scanned_at)} · {inventory.asset_count} regional resources · {inventory.status}</p>}</section>}
-        <footer className="footer"><span>Finovaunt · Read-only AWS Evidence</span><span>Values come from persisted AWS API responses; click Collect Live AWS Data to request a new snapshot.</span></footer>
+          </section>
+        </div>}
+        {accountId && !loading && tab === "Scan History" && <section className="panel table-panel"><h2>Persisted AWS Collection History</h2>{data?.billing_history.length ? <div className="table-scroll"><table><thead><tr><th>Collected At</th><th>Month</th><th>Month-to-Date Spend</th><th>Status</th></tr></thead><tbody>{[...data.billing_history].reverse().map(s => <tr key={s.id}><td>{formatTime(s.scanned_at)}</td><td>{s.period_start}</td><td>{formatMoney(s.total_cost,s.currency)}</td><td>{s.status}</td></tr>)}</tbody></table></div> : <Empty>No Cost Explorer collection history exists for this account.</Empty>}{inventory && <p>Latest inventory collection: {formatTime(inventory.scanned_at)} · {inventory.asset_count} regional resources · {inventory.status}</p>}</section>}
+        {!showOverview && collectionSettings}
       </div>
-    </main>
-  </div>;
+  </main>;
 }
