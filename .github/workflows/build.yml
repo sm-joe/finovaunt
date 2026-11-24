@@ -97,13 +97,13 @@ jobs:
       - name: Verify Persisted State After Container Restart
         run: python scripts/acceptance_state_upgrade.py verify
 
-      - name: Install Chromium Browser Acceptance Runner
+      - name: Prepare Chrome Browser Acceptance Runner
         shell: bash
         run: |
           set -euo pipefail
           python -m venv /tmp/finovaunt-browser-venv
           /tmp/finovaunt-browser-venv/bin/pip install --disable-pip-version-check 'playwright==1.58.0'
-          /tmp/finovaunt-browser-venv/bin/python -m playwright install --with-deps chromium
+          google-chrome --version
 
       - name: Exercise Login Dashboard Accounts Profile Logout In Chromium
         shell: bash
