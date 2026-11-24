@@ -55,7 +55,7 @@ jobs:
 
   compose-runtime-smoke:
     name: Boot API and Dashboard on Docker Compose
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
       FINOVAUNT_BOOTSTRAP_PASSWORD: ci-runtime-bootstrap-pass-2026
@@ -97,6 +97,20 @@ jobs:
       - name: Verify Persisted State After Container Restart
         run: python scripts/acceptance_state_upgrade.py verify
 
+      - name: Prepare Chrome Browser Acceptance Runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/finovaunt-browser-venv
+          /tmp/finovaunt-browser-venv/bin/pip install --disable-pip-version-check 'playwright==1.58.0'
+          google-chrome --version
+
+      - name: Exercise Login Dashboard Accounts Profile Logout In Chromium
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/finovaunt-browser-venv/bin/python scripts/acceptance_browser.py
+
       - name: Verify Backup Integrity Of Persisted State
         shell: bash
         run: |
@@ -104,6 +118,14 @@ jobs:
           docker compose stop api frontend
           sudo -n python scripts/control_backup.py backup "$RUNNER_TEMP/finovaunt-state.tar.gz"
           sudo -n python scripts/control_backup.py verify "$RUNNER_TEMP/finovaunt-state.tar.gz"
+
+      - name: Restore Verified Snapshot And Prove Recovered Login
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo -n python scripts/control_backup.py restore "$RUNNER_TEMP/finovaunt-state.tar.gz" --force
+          docker compose up -d --force-recreate api frontend
+          python scripts/acceptance_state_upgrade.py verify
 
       - name: Inspect Container Status on Failure
         if: failure()

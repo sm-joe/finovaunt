@@ -8,6 +8,30 @@ _LOCK = threading.RLock()
 _SESSIONS: dict[str, tuple[str, float]] = {}
 _SESSION_TTL_SECONDS = 12 * 60 * 60
 _ITERATIONS = 310_000
+_LOGIN_FAILURE_LIMIT = 8
+_LOGIN_WINDOW_SECONDS = 5 * 60
+_LOGIN_FAILURES: list[float] = []
+
+
+def login_blocked() -> bool:
+    """Bounded single-administrator login throttle for a local API."""
+    with _LOCK:
+        now = time.monotonic()
+        _LOGIN_FAILURES[:] = [t for t in _LOGIN_FAILURES if now - t < _LOGIN_WINDOW_SECONDS]
+        return len(_LOGIN_FAILURES) >= _LOGIN_FAILURE_LIMIT
+
+
+def record_login_failure() -> None:
+    with _LOCK:
+        now = time.monotonic()
+        _LOGIN_FAILURES[:] = [t for t in _LOGIN_FAILURES if now - t < _LOGIN_WINDOW_SECONDS]
+        _LOGIN_FAILURES.append(now)
+
+
+def clear_login_failures() -> None:
+    with _LOCK:
+        _LOGIN_FAILURES.clear()
+
 
 def _path() -> Path:
     configured = os.getenv("FINOVAUNT_CONTROL_FILE", "data/control-plane.json")

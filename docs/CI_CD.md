@@ -1,52 +1,58 @@
-# Finovaunt CI/CD and Release Gates
+# Finovaunt CI/CD and v1.0.0 Release Gates
 
-## Temporary product-development mode
+Finovaunt's default branch is `main`. Normal PR and main pushes run the complete [Finovaunt Product CI](../.github/workflows/build.yml) workflow. Production releases are gated separately. **Green development CI does not, by itself, authorize v1.0.0 publication.**
 
-During the M1–M6 enhancement phase, the owner requested disabling **security scans and Docker image builds** on every pull request and push. The current `.github/workflows/build.yml` therefore invokes the reusable `.github/workflows/ci.yml` as the lightweight product CI.
+## Required PR and main checks
 
-The product CI checks:
-- Python package install, syntax compilation and backend tests
-- Locked npm installation and React/TypeScript production build
-- Docker Compose **configuration** validation (`docker compose config --quiet`, not an image build)
+| Gate | Implementation |
+| --- | --- |
+| Backend | Python 3.13, locked `uv` install, syntax checks, pytest |
+| Frontend | Locked npm install and TypeScript / Vite production build |
+| Configuration | Docker Compose validation |
+| Secrets and dependency security | Dedicated reusable security workflow |
+| Container security | Trivy scans and real API and dashboard image builds |
+| Clean installation | Docker Compose boot and authenticated HTTP health |
+| Persistent installation | Login, administrator password change, AWS role configuration revision, container recreation |
+| Browser acceptance | Real headless Chromium sign-in, dashboard, AWS accounts, profile, logout, session rejection, mobile login |
+| Recovery | Offline backup and checksum verification, then **actual restore**, container recreation and recovered state acceptance |
 
-The `.github/workflows/security.yml` file remains in the repository but is not invoked by the product-development workflow. Docker image publication to GHCR is likewise disabled for PRs and pushes. This is temporary and **does not imply security approval**.
+The application workflow uses [`build.yml`](../.github/workflows/build.yml), [`ci.yml`](../.github/workflows/ci.yml) and [`security.yml`](../.github/workflows/security.yml). Docker image publication does not run automatically for a PR.
 
-## Before stable v1.0.0
+## Release blockers not simulated in CI
 
-Restore the complete release pipeline with all of the following gates:
+A production v1.0.0 candidate must also pass all of the following on the intended self-hosted installation:
 
-1. Backend tests, type-checking and linting.
-2. Frontend TypeScript validation, ESLint, build and Playwright end-to-end tests.
-3. Secret scanning, Python and npm dependency audits, and Trivy filesystem/IaC scans.
-4. Reproducible API/dashboard Docker image builds and vulnerability checks.
-5. Self-hosted clean-install, login, AWS role onboarding, billing, inventory, and recommendation review acceptance.
-6. Durable backup/restore tests and recovery of interrupted scan jobs.
-7. Live read-only AWS acceptance, including empty inventories, missing telemetry and cost attribution boundaries.
-8. Verified release artifacts, version metadata, release notes and license/security documents.
+1. **Live AWS read-only acceptance:** source identity, exact target role assumption, Cost Explorer linked-account billing, EC2/EBS/RDS enumeration, S3 discovery and EKS discovery; partial coverage is not a successful acceptance result. Run `scripts/acceptance_live_aws.py` with authorized credentials.
+2. **IAM and EKS authorization review:** check IAM read-only privileges, protected default source credentials, optional EKS Kubernetes metrics RBAC, and no AWS write calls in dashboard collection.
+3. **Security and threat-model review:** same-origin login/mutations, request throttling, session expiration/rotation, private network binding, network and proxy hardening, sensitive-state storage and restore permissions.
+4. **Release-to-release upgrade and rollback:** a real prior deployment upgraded with persisted data, then recovered using a verified pre-upgrade snapshot. A same-commit container recreation does not demonstrate compatibility between released versions.
+5. **Distribution and provenance:** commit SHA, version metadata, immutable release/tag, build provenance, signed verifiable artifacts, SBOM/release notes and installation verification.
 
-The previous security workflow identified an outdated vulnerable `certifi 2026.7.22` dependency lock; the repaired version must be resolved into `uv.lock` and audited before release. Do not hide a high/critical finding to obtain a green release badge.
+If an acceptance prerequisite is unavailable, mark it **NOT VERIFIED**, not PASS. Do not publish a stable release on the strength of mocked responses or browser-only smoke tests.
 
-## CLI validation (Bash)
+## Local developer verification (Bash)
 
 ```bash
 uv sync --dev
 uv run python -m compileall -q src scripts tests
 uv run python -m pytest -q
+
 cd frontend
 npm ci
 npm run lint
 npm run typecheck
 npm run build
 cd ..
+
 docker compose config --quiet
 ```
 
-If any command fails, correct the implementation and rerun all affected checks. GitHub status must be based on the exact commit being merged or tagged.
+For full Compose acceptance on a disposable test host, follow the steps in `build.yml`. Browser acceptance uses a real Chromium engine via Python Playwright; CI installs it in a separate temporary virtual environment. Development state and browser fixtures contain synthetic AWS accounts only and do not call AWS.
 
-## Historical scan workflow
+## Scheduled cloud scan workflow
 
-`.github/workflows/finovaunt-scan.yml` remains the separately scheduled AWS read-only scanner, using GitHub OIDC. It can report empty inventory as a no-op but must never fabricate asset utilization or savings. Successful scan artifacts may be synchronized by the dashboard when an appropriate GitHub token is configured.
+[`finovaunt-scan.yml`](../.github/workflows/finovaunt-scan.yml) is the separate scheduled read-only scan workflow and uses AWS credential mechanisms configured for that workflow. It is **not** an automatic non-production start/stop scheduler. No read-only scan, review, or dashboard endpoint may modify infrastructure.
 
-## Publication policy
+## Stable publication policy
 
-Only publish signed, verified, immutable release artifacts after all release gates are reinstated and passing. Development green CI is **not** proof of stable release readiness.
+Publish `v1.0.0` only after a final release candidate has green CI, the operator-owned live acceptance evidence is recorded, real backup/recovery and version-upgrade evidence exists, and release artifacts have verified signing/provenance. Do not move an existing stable tag after publication. Maintain a clear changelog and explicit unsupported-feature boundaries.

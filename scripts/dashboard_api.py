@@ -67,6 +67,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(encoded)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
         origin = self.headers.get("Origin")
         if origin in _ALLOWED_ORIGINS:
             self.send_header("Access-Control-Allow-Origin", origin)
@@ -113,8 +115,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._json(403, {"error": "invalid_origin", "message": "Cross-origin changes are blocked."})
             return
         if route == "/api/auth/login":
+            if access_control.login_blocked():
+                self._json(429, {"error": "too_many_attempts", "message": "Too many sign-in attempts. Try again in a few minutes."})
+                return
             result = access_control.login(str(body.get("username", "")), str(body.get("password", "")))
-            if not result: self._json(401, {"error":"invalid_credentials","message":"Username or password is incorrect."}); return
+            if not result:
+                access_control.record_login_failure()
+                self._json(401, {"error":"invalid_credentials","message":"Username or password is incorrect."})
+                return
+            access_control.clear_login_failures()
             self._auth_json(200, {"authenticated": True, **{k:v for k,v in result.items() if k != "token"}}, token=result["token"])
             return
         token = self._cookie_token()
@@ -295,7 +304,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def _auth_json(self, status: int, payload: Any, token: str | None = None, clear: bool = False) -> None:
         encoded = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status); self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(encoded))); self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(encoded))); self.send_header("Cache-Control", "no-store"); self.send_header("X-Content-Type-Options", "nosniff"); self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Set-Cookie", f"finovaunt_session={'' if clear else token or ''}; HttpOnly; SameSite=Strict; Path=/{'; Secure' if os.getenv('FINOVAUNT_SECURE_COOKIES', 'false').lower() == 'true' else ''}; Max-Age={0 if clear else 43200}")
         self.end_headers(); self.wfile.write(encoded)
 

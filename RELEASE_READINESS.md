@@ -1,6 +1,6 @@
 # Finovaunt — Stable v1.0.0 Release Evidence
 
-**Status: NOT READY FOR STABLE PUBLICATION.**
+**Status: RELEASE CANDIDATE HARDENING — STABLE PUBLICATION BLOCKED ON LIVE ACCEPTANCE.**
 
 This file is a live release gate. Do not substitute past test success or development CI for current production evidence. Historical functional closure is documented separately in `docs/RELEASE_READINESS.md`.
 
@@ -17,14 +17,20 @@ This file is a live release gate. Do not substitute past test success or develop
 
 - M2: transactional durable backend data store, migrations, reliable multi-user session/role management and backup recovery.
 - M3: fully integrated account/region scan dispatch, utilization evidence pipeline, verified resource cost attribution and broader safe optimization policies.
-- M4: production UX acceptance, accessibility, error states, interaction QA and Playwright end-to-end suite.
+- M4: real Chromium browser smoke covers login, dashboard, AWS accounts, profile, logout and mobile login. Accessibility and broader interactive/cross-browser acceptance remain required for internet-exposed deployments.
 - M5: durable scheduled jobs, proposal history integration, role-based review and verified outcome lifecycle.
-- M6: CI now verifies clean-install startup and retention of account/password state across container recreation. Remaining: release-to-release upgrade/rollback on target installations, stable distribution versioning and complete operations acceptance.
-- Final audit: security and Docker build gates restored, and vulnerable `certifi` upgraded. Remaining: verify live AWS Pricing/EKS PV RBAC under the target role, full regional coverage, clean install and upgrades, and reproducibly signed/published artifacts.
+- M6: CI now tests clean install, password/account persistence, real offline backup **and restore**, and recovered application state. Remaining: release-to-release upgrade/rollback on target installations, stable distribution versioning and live operations acceptance.
+- Final audit: security and Docker build gates restored, vulnerable `certifi` upgraded, login throttling and browser/recovery acceptance added. Remaining: verify live AWS Pricing/EKS PV RBAC under the target role, full regional coverage, release-to-release upgrades and signed/published immutable artifacts.
 
-## Development CI
+## Scoped v1.0.0 Candidate
+
+A frozen, **single-administrator, private/self-hosted AWS-only v1.0.0 scope** is defined in [Release Candidate Acceptance](docs/RELEASE_V1_CHECKLIST.md). Richer FinOps cost attribution, automated scheduling, and multi-user capabilities are explicitly deferred and not represented as complete v1.0.0 features.
 
 PR and push checks now include backend tests, frontend build, Compose configuration, secret and dependency audits, Trivy Dockerfile/filesystem/IaC scans and both actual Docker builds. A real clean-start Compose HTTP smoke test, persisted-state upgrade exercise and verified offline backup check are included. This still does not replace AWS acceptance, persisted upgrade/rollback, reliability/security review or a verified release distribution.
+
+## Stable artifact publication
+
+A manually dispatched, operator-attested publication workflow in `.github/workflows/publish-stable.yml` is prepared to build verified source and OCI artifacts, publish an SPDX SBOM and Sigstore-backed GitHub provenance, and create the immutable release. It is **not run by PR CI** and must not be dispatched until live AWS acceptance, target-host upgrade/rollback and security review are independently evidenced.
 
 ## Release decision
 
