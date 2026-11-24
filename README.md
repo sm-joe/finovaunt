@@ -1,6 +1,6 @@
 # Finovaunt
 
-### AWS FinOps visibility, backed by evidence.
+### AWS FinOps Visibility, Backed By Evidence.
 
 **Finovaunt** is a self-hosted, AWS-only FinOps platform for analyzing cloud spend, investigating underutilized resources, and documenting optimization decisions. It brings account-scoped billing, infrastructure inventory, cost allocation, and review evidence together in a responsive enterprise dashboard.
 
@@ -36,7 +36,7 @@ Finovaunt is currently designed for a **private, single-administrator, AWS-only 
 | **Administration** | Local administrator login, required initial password rotation, cloud account onboarding and credential diagnostics |
 | **Operations** | Docker Compose deployment, persisted local state, checksum-verified offline backup and actual restore testing |
 
-### Evidence, not invented savings
+### Evidence, Not Invented Savings
 
 | Signal | Correct interpretation |
 | --- | --- |
@@ -51,7 +51,7 @@ Finovaunt is currently designed for a **private, single-administrator, AWS-only 
 
 See [AWS FinOps Scope](docs/AWS_FINOPS_SCOPE.md), [Cost Evidence Report](docs/COST_EVIDENCE_REPORT.md) and [Outcome Verification](docs/OUTCOME_VERIFICATION.md).
 
-## Product workflow
+## Product Workflow
 
 1. **Sign in** to the private administrator workspace.
 2. **Add an AWS account** with its account identifier, region and intended read-only collector role.
@@ -95,7 +95,7 @@ The existing refactored React/TypeScript frontend covers login, account manageme
 | State | Local persisted accounts, scans, review and audit history |
 | Quality | Backend tests, frontend checks, container builds, Chromium browser tests and Compose restore acceptance |
 
-## Quick start
+## Quick Start
 
 ### Prerequisites
 
@@ -103,7 +103,7 @@ The existing refactored React/TypeScript frontend covers login, account manageme
 - For live collection, AWS CLI v2/source credentials authorized to read the intended account or assume the target read-only role.
 - Python 3.11+ and [uv](https://docs.astral.sh/uv/) for optional host-side commands.
 
-### 1. Clone and configure
+### 1. Clone And Configure
 
 ~~~bash
 git clone https://github.com/sm-joe/finovaunt.git
@@ -118,7 +118,7 @@ docker compose config --quiet
 
 **Do not replace an existing installation's environment file or delete its data directory.** The bootstrap password is for initial setup; existing deployments retain the persisted password hash.
 
-### 2. Run the dashboard
+### 2. Run The Dashboard
 
 ~~~bash
 docker compose up -d --build
@@ -130,7 +130,7 @@ Open **http://127.0.0.1:4173**, sign in as **admin** using the generated private
 
 The default frontend and API bindings are **loopback-only** (ports 4173 and 8787). **Do not publicly expose either development endpoint.** For TLS and private deployment requirements, read [Security](SECURITY.md) and [Docker Operations](docs/DOCKER.md).
 
-### 3. Connect your AWS account
+### 3. Connect Your AWS Account
 
 In **Cloud Accounts**, add an account name, its 12-digit ID, collection region and read-only IAM role ARN. Cross-role collection requires the source principal's STS AssumeRole permission and the target role's trust policy. Supply an External ID only if the trust relationship requires it.
 
@@ -149,13 +149,13 @@ Temporary environment credentials expire, can be visible to local processes and 
 
 Use the dashboard's **Check AWS Credentials** and collection actions. Optional EKS namespace sampling requires additional cluster network access, Kubernetes Metrics Server and read-only Kubernetes RBAC.
 
-### 4. Explore and review
+### 4. Explore And Review
 
 Use the account-aware overview, AWS FinOps, resources and review pages to investigate current evidence and preserve manual decisions. Changing an account role or region creates a new collector revision: old scans remain historical rather than being misrepresented as fresh evidence.
 
 See [Account Access & Billing](docs/ACCESS_AND_BILLING.md) for credentials and onboarding details.
 
-## Operations and recovery
+## Operations And Recovery
 
 ~~~bash
 docker compose ps
@@ -178,7 +178,7 @@ docker compose start api frontend
 
 Backups contain sensitive AWS metadata and administrator password hashes. The utility verifies archive checksums, **not confidentiality**; encrypt and restrict archives. Restoration can overwrite state. Follow [Docker Operations](docs/DOCKER.md) for the full restore, ownership and rollback procedure.
 
-### Optional Python tools
+### Optional Python Tools
 
 ~~~bash
 uv sync --dev
@@ -189,7 +189,7 @@ FINOPS_DISCOVERY_MODE=aws FINOPS_OUTPUT_DIR=artifacts-live \
   uv run python scripts/run_readonly_scan.py
 ~~~
 
-### Configuration reference
+### Configuration Reference
 
 | Variable | Purpose |
 | --- | --- |
@@ -204,7 +204,7 @@ FINOPS_DISCOVERY_MODE=aws FINOPS_OUTPUT_DIR=artifacts-live \
 
 Consult [.env.example](.env.example). Never commit production credentials, exports, or local scan artifacts.
 
-## Developer validation
+## Developer Validation
 
 ~~~bash
 uv sync --dev
@@ -239,7 +239,7 @@ The approval-gated stable publication workflow is configured to build OCI images
 | [Release Readiness](docs/RELEASE_READINESS.md) | Pending operator acceptance |
 | [Security Policy](SECURITY.md) | Confidential reports and deployment boundaries |
 
-## Contributing and license
+## Contributing And License
 
 Changes should include a clear problem statement, relevant tests and documentation. **Do not include real AWS account data or credentials in public issues and test fixtures.** Report vulnerabilities privately using [GitHub Security Advisories](https://github.com/sm-joe/finovaunt/security/advisories).
 
