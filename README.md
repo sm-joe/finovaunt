@@ -15,21 +15,21 @@
 
 Cost data is useful when teams can connect **what AWS billed**, **which resources exist**, and **what evidence supports an optimization decision**.
 
-- **Account-aware visibility** — Service spend, historical scans, regional and activated tag allocation.
-- **Operational context** — Cloud inventory alongside utilization and capacity observations.
-- **Human-led decisions** — Review candidates, document reasoning and retain evidence history.
-- **Read-only by default** — Everyday collection and dashboard review do not mutate AWS resources.
-- **Explicit uncertainty** — Unknown access, incomplete inventory, theoretical scenarios and unverified savings are clearly distinguished.
+- **Account-Aware Visibility** — Service spend, historical scans, regional and activated tag allocation.
+- **Operational Context** — Cloud inventory alongside utilization and capacity observations.
+- **Human-Led Decisions** — Review candidates, document reasoning and retain evidence history.
+- **Read-Only By Default** — Everyday collection and dashboard review do not mutate AWS resources.
+- **Explicit Uncertainty** — Unknown access, incomplete inventory, theoretical scenarios and unverified savings are clearly distinguished.
 
 Finovaunt is currently designed for a **private, single-administrator, AWS-only deployment**. It is not a multi-tenant SaaS service or autonomous production remediation engine.
 
 ## Capabilities
 
-| Domain | What Finovaunt provides |
+| Domain | What Finovaunt Provides |
 | --- | --- |
-| **AWS billing** | Account-scoped Cost Explorer service spending, linked-account filtering, historical snapshots, tag and region grouping |
-| **Resource inventory** | Region-scoped EC2, EBS and RDS discovery with inventory completeness and truncation indicators |
-| **Optimization reviews** | CPU investigation signals, EBS attachment/pricing scenarios, Kubernetes PV checks and an auditable human review ledger |
+| **AWS Billing** | Account-scoped Cost Explorer service spending, linked-account filtering, historical snapshots, tag and region grouping |
+| **Resource Inventory** | Region-scoped EC2, EBS and RDS discovery with inventory completeness and truncation indicators |
+| **Optimization Reviews** | CPU investigation signals, EBS attachment/pricing scenarios, Kubernetes PV checks and an auditable human review ledger |
 | **Storage** | S3 buckets, location, tags and sampled storage telemetry; EBS size, attachment, provisioned attributes and indicative pricing |
 | **Kubernetes** | EKS cluster inventory and optional namespace CPU/memory observations when Kubernetes RBAC and Metrics Server allow |
 | **Governance** | Read existing AWS Budgets, account-scoped evidence, collector configuration revisions and historical decisions |
@@ -38,27 +38,27 @@ Finovaunt is currently designed for a **private, single-administrator, AWS-only 
 
 ### Evidence, Not Invented Savings
 
-| Signal | Correct interpretation |
+| Signal | Correct Interpretation |
 | --- | --- |
-| Cost Explorer billing | Observed spend for the account, period and supported grouping |
-| Low CPU / unattached EBS | Manual investigation candidate, never proof that a change is safe |
-| EBS monthly storage estimate | Illustrative storage-only pricing scenario, not realized savings |
-| S3 metrics | Capacity observations, not verified per-bucket billed costs |
-| EKS namespace usage | CPU/memory usage, not attributable workload dollar spend |
-| Missing permissions or truncated scans | Partial, unavailable or unknown — not an implicit zero or PASS |
+| Cost Explorer Billing | Observed spend for the account, period and supported grouping |
+| Low CPU / Unattached EBS | Manual investigation candidate, never proof that a change is safe |
+| EBS Monthly Storage Estimate | Illustrative storage-only pricing scenario, not realized savings |
+| S3 Metrics | Capacity observations, not verified per-bucket billed costs |
+| EKS Namespace Usage | CPU/memory usage, not attributable workload dollar spend |
+| Missing Permissions Or Truncated Scans | Partial, unavailable or unknown — not an implicit zero or PASS |
 
-**Not claimed:** automatic shutdown scheduling, per-bucket billed cost, EKS namespace dollar allocation, resource-level CUR reconciliation, verified forecasts, automatic safe rightsizing, or independently established realized savings. The separate optional non-production EC2 executor is disabled by default and is not invoked by the dashboard.
+**Not Claimed:** automatic shutdown scheduling, per-bucket billed cost, EKS namespace dollar allocation, resource-level CUR reconciliation, verified forecasts, automatic safe rightsizing, or independently established realized savings. The separate optional non-production EC2 executor is disabled by default and is not invoked by the dashboard.
 
 See [AWS FinOps Scope](docs/AWS_FINOPS_SCOPE.md), [Cost Evidence Report](docs/COST_EVIDENCE_REPORT.md) and [Outcome Verification](docs/OUTCOME_VERIFICATION.md).
 
 ## Product Workflow
 
-1. **Sign in** to the private administrator workspace.
-2. **Add an AWS account** with its account identifier, region and intended read-only collector role.
-3. **Check credentials and collect AWS data** using real source identity and service permissions.
+1. **Sign In** to the private administrator workspace.
+2. **Add An AWS Account** with its account identifier, region and intended read-only collector role.
+3. **Check Credentials And Collect AWS Data** using real source identity and service permissions.
 4. **Investigate** costs, allocations, inventory, recommendations and incomplete coverage.
-5. **Record a human review** without triggering changes to infrastructure.
-6. **Recollect evidence** to compare what changed, with historical records kept distinct from current findings.
+5. **Record A Human Review** without triggering changes to infrastructure.
+6. **Recollect Evidence** to compare what changed, with historical records kept distinct from current findings.
 
 The existing refactored React/TypeScript frontend covers login, account management, overview, FinOps analysis, resource review and profile workflows. This documentation change does **not** modify UI code or styling.
 
@@ -84,13 +84,13 @@ The existing refactored React/TypeScript frontend covers login, account manageme
               S3 · CloudWatch · EKS
 ~~~
 
-**Security boundary:** Ordinary dashboard collection uses AWS read permissions. A separate explicit opt-in CLI can operate on selected non-production EC2 instances with dedicated authorization, but is **not** part of normal dashboard collection or a scheduler.
+**Security Boundary:** Ordinary dashboard collection uses AWS read permissions. A separate explicit opt-in CLI can operate on selected non-production EC2 instances with dedicated authorization, but is **not** part of normal dashboard collection or a scheduler.
 
 | Layer | Technology |
 | --- | --- |
 | Frontend | React, TypeScript and Nginx |
 | Backend | Python and AWS SDK (boto3) |
-| Cloud evidence | Cost Explorer, Budgets, STS, EC2/EBS/RDS, S3, CloudWatch and EKS |
+| Cloud Evidence | Cost Explorer, Budgets, STS, EC2/EBS/RDS, S3, CloudWatch and EKS |
 | Runtime | Docker Engine and Docker Compose v2 |
 | State | Local persisted accounts, scans, review and audit history |
 | Quality | Backend tests, frontend checks, container builds, Chromium browser tests and Compose restore acceptance |
@@ -193,14 +193,14 @@ FINOPS_DISCOVERY_MODE=aws FINOPS_OUTPUT_DIR=artifacts-live \
 
 | Variable | Purpose |
 | --- | --- |
-| FINOVAUNT_BOOTSTRAP_PASSWORD | Unique initial administrator password (minimum 12 characters) |
-| FINOVAUNT_SECURE_COOKIES | Enable with correctly configured HTTPS |
-| AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN | Optional local source credentials (sensitive and typically temporary) |
-| AWS_DEFAULT_REGION | Default AWS SDK region; scans also use the onboarded account's region |
-| FINOVAUNT_GITHUB_TOKEN | Optional token for read-only scan artifact synchronization |
-| FINOPS_DISCOVERY_MODE | AWS for live collection; mock for local simulation |
-| FINOPS_OUTPUT_DIR | Restricted directory for scan artifacts |
-| FINOPS_AWS_REGION / FINOPS_AWS_LOOKBACK_DAYS | Optional CLI regional scope and history window |
+| `FINOVAUNT_BOOTSTRAP_PASSWORD` | Unique initial administrator password (minimum 12 characters) |
+| `FINOVAUNT_SECURE_COOKIES` | Enable with correctly configured HTTPS |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` | Optional local source credentials (sensitive and typically temporary) |
+| `AWS_DEFAULT_REGION` | Default AWS SDK region; scans also use the onboarded account's region |
+| `FINOVAUNT_GITHUB_TOKEN` | Optional token for read-only scan artifact synchronization |
+| `FINOPS_DISCOVERY_MODE` | AWS for live collection; mock for local simulation |
+| `FINOPS_OUTPUT_DIR` | Restricted directory for scan artifacts |
+| `FINOPS_AWS_REGION` / `FINOPS_AWS_LOOKBACK_DAYS` | Optional CLI regional scope and history window |
 
 Consult [.env.example](.env.example). Never commit production credentials, exports, or local scan artifacts.
 
@@ -247,4 +247,4 @@ Finovaunt is licensed under [MIT](LICENSE). Copyright © 2026 sm-joe.
 
 ---
 
-**Finovaunt — Measure with evidence. Optimize with confidence.**
+**Finovaunt — Measure With Evidence. Optimize With Confidence.**
