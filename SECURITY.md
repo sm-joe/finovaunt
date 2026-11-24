@@ -6,7 +6,7 @@ Finovaunt is a **self-hosted, AWS-only FinOps platform** designed around read-on
 
 ## Report A Vulnerability
 
-**Preferred channel:** [GitHub Private Vulnerability Reporting / Security Advisories](https://github.com/sm-joe/finovaunt/security/advisories).
+**Preferred Channel:** [GitHub Private Vulnerability Reporting / Security Advisories](https://github.com/sm-joe/finovaunt/security/advisories).
 
 If private reporting is unavailable, contact the repository maintainers through a nonsensitive public message to request a confidential channel. **Do not publish reproduction steps, vulnerable endpoints, secrets or unredacted evidence.**
 
@@ -26,11 +26,11 @@ Maintainers review incoming reports, attempt reproduction, evaluate severity and
 
 ## Supported Versions
 
-| Distribution | Security maintenance |
+| Distribution | Security Maintenance |
 | --- | --- |
-| Main branch | Best-effort review and fixes with current CI checks |
-| v1.0.0 release candidate | Under release acceptance; stable publication has **not yet been verified** |
-| Unmerged branches, forks and old snapshots | No guaranteed security patch or backport support |
+| Main Branch | Best-effort review and fixes with current CI checks |
+| Stable `v1.0.0` | Published; maintenance is best-effort without a guaranteed SLA |
+| Unmerged Branches, Forks And Old Snapshots | No guaranteed security patch or backport support |
 
 Consult [Release Acceptance](docs/RELEASE_V1_CHECKLIST.md) and [Release Readiness](docs/RELEASE_READINESS.md) for current verification. A passing CI scan is not a guarantee of safe public deployment.
 
@@ -38,16 +38,16 @@ Consult [Release Acceptance](docs/RELEASE_V1_CHECKLIST.md) and [Release Readines
 
 Finovaunt retains sensitive cloud and business metadata even when AWS requests are read-only. Security depends on both the application boundary and **how operators configure the host, IAM roles and network**.
 
-| Surface | Implemented or intended boundary | Operator responsibility |
+| Surface | Implemented Or Intended Boundary | Operator Responsibility |
 | --- | --- | --- |
 | **Dashboard / API** | Same-origin Nginx gateway, session-protected administrative and collection endpoints | Limit network access, configure TLS before non-local access |
 | **Administrator** | Explicit bootstrap password, first-use rotation, locally persisted password hash, bounded failed-login attempts | Generate a unique secret, restrict administrator access and monitor incidents |
 | **Session** | HttpOnly and SameSite=Strict cookies, origin checks and defensive response headers | Use secure cookies with HTTPS; avoid exposure to untrusted origins |
-| **AWS identity** | AWS SDK credential chain and STS role identity checks for target collection | Configure narrowly scoped AWS source permissions and role trust |
+| **AWS Identity** | AWS SDK credential chain and STS role identity checks for target collection | Configure narrowly scoped AWS source permissions and role trust |
 | **Collector** | Read-oriented billing, inventory, Kubernetes and storage telemetry | Grant only the necessary AWS Describe/List/Get and billing read actions |
 | **EKS / Kubernetes** | TLS-validated cluster API and read-only metric/PV collection where authorized | Configure separate Kubernetes RBAC and endpoint network reachability |
-| **Local state** | Persisted accounts, administrator, scan evidence, history and review records | Restrict host filesystem and backups; define encryption, retention and recovery policy |
-| **Optional executor** | Separate opt-in non-production CLI with dedicated role and resource/tag checks | Maintain approval and execution separation; do not grant its write rights to collectors |
+| **Local State** | Persisted accounts, administrator, scan evidence, history and review records | Restrict host filesystem and backups; define encryption, retention and recovery policy |
+| **Optional Executor** | Separate opt-in non-production CLI with dedicated role and resource/tag checks | Maintain approval and execution separation; do not grant its write rights to collectors |
 
 ### Read-Only Dashboard, Separate Execution Boundary
 
@@ -110,13 +110,13 @@ The Product CI workflow includes:
 
 | Check | Purpose |
 | --- | --- |
-| Python backend tests and source compilation | Catch regressions in API, authentication, collector and state behavior |
-| Frontend lint/type/build | Confirm the refactored React UI is valid without changing its design |
-| Dependency and secret scans | Detect vulnerable components and accidentally committed secrets |
-| Trivy and Dockerfile checks | Surface filesystem, dependency and configuration risks |
-| Docker image builds and Compose startup | Validate container packaging and service health |
-| Chromium browser acceptance | Exercise login, account navigation, profile, logout and responsive login |
-| Persistence, backup and restore acceptance | Verify tested state survival and recovered administrator/account data |
+| Python Backend Tests And Source Compilation | Catch regressions in API, authentication, collector and state behavior |
+| Frontend Lint/Type/Build | Confirm the refactored React UI is valid without changing its design |
+| Dependency And Secret Scans | Detect vulnerable components and accidentally committed secrets |
+| Trivy And Dockerfile Checks | Surface filesystem, dependency and configuration risks |
+| Docker Image Builds And Compose Startup | Validate container packaging and service health |
+| Chromium Browser Acceptance | Exercise login, account navigation, profile, logout and responsive login |
+| Persistence, Backup And Restore Acceptance | Verify tested state survival and recovered administrator/account data |
 
 These results apply only to the tested commit and CI environment. The **operator-owned** release gates additionally require actual AWS IAM/service testing, installation upgrade and prior-version rollback, private-host network review and artifact provenance verification.
 
@@ -124,20 +124,20 @@ The configured stable release workflow aims to generate OCI images, a source arc
 
 ### Security Invariants For Contributors
 
-1. **Fail closed on identity and coverage:** IAM errors, pagination limits, incomplete price evidence and unreachable Kubernetes telemetry must not silently pass.
-2. **Preserve account isolation:** Linked-account billing scope and collector revision must be respected; stale scans remain historical.
-3. **Never escalate the standard collector:** Dashboard discovery and review cannot gain AWS mutation permissions.
-4. **Maintain human review integrity:** Review approval is not authorization to run resource-changing commands.
-5. **Do not claim unmeasured savings:** S3 capacity is not per-bucket billing, EKS namespace CPU is not workload spend, and storage price scenarios are not realized reductions.
-6. **Do not weaken security gates to ship:** Document exceptions and investigate failures rather than suppressing or misrepresenting them.
+1. **Fail Closed On Identity And Coverage:** IAM errors, pagination limits, incomplete price evidence and unreachable Kubernetes telemetry must not silently pass.
+2. **Preserve Account Isolation:** Linked-account billing scope and collector revision must be respected; stale scans remain historical.
+3. **Never Escalate The Standard Collector:** Dashboard discovery and review cannot gain AWS mutation permissions.
+4. **Maintain Human Review Integrity:** Review approval is not authorization to run resource-changing commands.
+5. **Do Not Claim Unmeasured Savings:** S3 capacity is not per-bucket billing, EKS namespace CPU is not workload spend, and storage price scenarios are not realized reductions.
+6. **Do Not Weaken Security Gates To Ship:** Document exceptions and investigate failures rather than suppressing or misrepresenting them.
 
 ## Related Documentation
 
-- [README — product overview and quick start](README.md)
+- [README — Product Overview And Quick Start](README.md)
 - [Docker Operations](docs/DOCKER.md)
 - [Account Access & Billing](docs/ACCESS_AND_BILLING.md)
 - [AWS FinOps Scope](docs/AWS_FINOPS_SCOPE.md)
-- [CI/CD and publication](docs/CI_CD.md)
+- [CI/CD And Publication](docs/CI_CD.md)
 - [Release Acceptance](docs/RELEASE_V1_CHECKLIST.md)
 
 ---
